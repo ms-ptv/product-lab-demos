@@ -1,0 +1,860 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hamburg 3D V3</title>
+<style>
+  :root { --bg:#e9ecf3; --ink:#1d2236; --muted:#6b7390; --accent:#1f2bff; }
+  html, body { margin:0; height:100%; background:var(--bg); overflow:hidden;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif; color:var(--ink); }
+  canvas { display:block; cursor:grab; }
+  canvas:active { cursor:grabbing; }
+  .pill { position:fixed; padding:8px 12px; border-radius:10px; font-size:12px; color:var(--muted);
+    background:rgba(255,253,249,.88); box-shadow:0 4px 16px rgba(31,43,120,.08); }
+  #hint { left:16px; bottom:calc(var(--tl, 150px) + 28px); }
+  #toggles { position:fixed; top:16px; right:16px; display:flex; gap:8px; }
+  .tg { display:flex; align-items:center; gap:8px; padding:8px 12px; border:0; border-radius:10px; font:600 13px -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif;
+    color:var(--muted); background:rgba(255,253,249,.92); box-shadow:0 4px 16px rgba(31,43,120,.10); cursor:pointer; }
+  .tg i { width:9px; height:9px; border-radius:50%; background:#c5c9d8; }
+  .tg.on { color:var(--ink); } .tg.on i { background:var(--accent); }
+  .tg kbd { font:600 11px ui-monospace,Menlo,monospace; color:var(--muted); border:1px solid #d7dbe8; border-radius:5px; padding:1px 5px; background:#fff; }
+  #legend { left:16px; bottom:calc(var(--tl, 150px) + 72px); width:300px; padding:10px 14px 12px; }
+  #legend .lt { font-size:12px; font-weight:600; color:var(--ink); margin-bottom:8px; line-height:1.3; }
+  #legend .lt small { display:block; font-weight:400; color:var(--muted); }
+  #bar { height:10px; border-radius:5px; }
+  #wx { left:16px; top:16px; display:flex; align-items:center; gap:10px; padding:8px 14px; font-size:13px; color:var(--ink); }
+  #wx svg { width:22px; height:22px; fill:none; stroke:var(--ink); stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
+  #wx b { font-weight:600; } #wx small { color:var(--muted); font-size:12px; }
+  #timeline { position:fixed; left:16px; right:16px; bottom:16px; padding:10px 14px 12px; border-radius:14px; background:rgba(255,253,249,.94); box-shadow:0 8px 24px rgba(31,43,120,.14), 0 1px 2px rgba(31,43,120,.10); }
+  #tl-head { display:flex; align-items:center; gap:14px; margin-bottom:8px; }
+  #play { width:34px; height:34px; border:0; border-radius:50%; background:var(--accent); cursor:pointer; display:grid; place-items:center; padding:0; }
+  #play svg { width:18px; height:18px; fill:#fff; }
+  #clock { font:600 20px ui-monospace,Menlo,monospace; letter-spacing:.02em; min-width:62px; }
+  #dayname { font-size:12px; color:var(--muted); }
+  #speed { margin-left:auto; display:flex; gap:4px; }
+  #speed button { border:0; border-radius:8px; padding:5px 10px; font:600 12px inherit; background:#eef0f6; color:var(--muted); cursor:pointer; }
+  #speed button.on { background:var(--ink); color:#fff; }
+  #tl-body { display:flex; gap:10px; }
+  #tl-labels { width:58px; padding-top:22px; font-size:12px; color:var(--muted); }
+  #tl-labels span { display:block; height:28px; line-height:28px; margin-bottom:4px; }
+  #tl-track { position:relative; flex:1; height:118px; cursor:col-resize; touch-action:none; }
+  #tl-canvas { position:absolute; inset:0; width:100%; height:100%; }
+  #playhead { position:absolute; top:0; bottom:0; left:0; width:0; pointer-events:none; }
+  #playhead::before { content:""; position:absolute; left:-1px; top:12px; bottom:0; width:2px; background:var(--ink); }
+  #playhead i { position:absolute; left:-6px; top:2px; width:12px; height:14px; border-radius:5px 5px 7px 7px; background:var(--ink); }
+  #ticks { margin-top:5px; font-size:11px; color:var(--muted); line-height:1.3; }
+  #carinfo { margin-top:6px; font-size:12px; color:var(--ink); }
+  #credit { right:16px; bottom:calc(var(--tl, 150px) + 28px); }
+  #loading { left:50%; top:50%; transform:translate(-50%,-50%); font-size:14px; color:var(--ink); }
+  #wash { position:fixed; inset:0; pointer-events:none; background:#e9ecf3; opacity:0; }
+  #line { position:fixed; inset:0; width:100%; height:100%; pointer-events:none; }
+  #pois { position:fixed; inset:0; pointer-events:none; overflow:hidden; }
+  .poi { position:absolute; left:0; top:0; width:0; height:0; will-change:transform; }
+  .dot { position:absolute; left:-10px; top:-10px; width:20px; height:20px; box-sizing:border-box; border-radius:50%;
+    background:#fff; border:5px solid var(--accent); pointer-events:auto; cursor:default; }
+  .chip { position:absolute; left:0; bottom:20px; transform:translateX(-50%); padding:6px 12px; border-radius:12px;
+    white-space:nowrap; font-size:13px; font-weight:600; background:rgba(255,253,249,.94);
+    box-shadow:0 8px 24px rgba(31,43,120,.14), 0 1px 2px rgba(31,43,120,.10); opacity:0; transition:opacity .15s; }
+  .chip::after { content:""; position:absolute; left:50%; bottom:-5px; width:10px; height:10px; background:inherit;
+    transform:translateX(-50%) rotate(45deg); border-radius:2px; }
+  .poi.show .chip { opacity:1; }
+</style>
+</head>
+<body>
+<div id="wash"></div>
+<svg id="line"></svg>
+<div id="pois"></div>
+<div id="loading" class="pill">Building Hamburg …</div>
+<div id="hint" class="pill">Drag: rotate · Right-click or two fingers: pan · Scroll: zoom</div>
+<div id="credit" class="pill">© OpenStreetMap contributors</div>
+<div id="toggles">
+  <button class="tg on" data-k="traffic" aria-pressed="true"><i></i>Traffic<kbd>V</kbd></button>
+  <button class="tg on" data-k="lines" aria-pressed="true"><i></i>Lines<kbd>L</kbd></button>
+</div>
+<div id="wx" class="pill"><svg viewBox="0 0 24 24"></svg><span><b id="wx-label">Normal</b></span></div>
+<div id="timeline">
+  <div id="tl-head">
+    <button id="play" aria-label="Pause"></button>
+    <div id="clock">05:30</div><div id="dayname">Weekday, demo day</div>
+    <div id="speed"><button data-s="30">30×</button><button data-s="120">120×</button><button data-s="600">600×</button></div>
+  </div>
+  <div id="tl-body">
+    <div id="tl-labels"><span>Weather</span><span>Traffic</span><span>U4</span></div>
+    <div id="tl-track"><canvas id="tl-canvas"></canvas><div id="playhead"><i></i></div></div>
+  </div>
+</div>
+<div id="legend" class="pill">
+  <div class="lt">Road utilization<small>Model calculation, not measured data</small></div>
+  <div id="bar"></div><div id="ticks"></div>
+  <div id="carinfo"></div>
+</div>
+
+<script src="hamburg-data.js"></script>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+
+const CITY = window.CITY, HX = CITY.meta.hx, HZ = CITY.meta.hz;
+
+/* ---------- Grundlagen ---------- */
+function mulberry32(a){ return () => { a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a);
+  t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+const rnd = mulberry32(11);
+const R = (a,b) => a + (b-a)*rnd();
+const pick = arr => arr[Math.floor(rnd()*arr.length)];
+const tick = () => new Promise(r => setTimeout(r));
+
+const C = { bg:0xe9ecf3, tree:[0x74c68a,0x5fb877,0x8ad39b], trunk:0xb9a58c,
+  car:[0xffffff,0x2b2f3d,0x1f2bff,0x7a8199,0x2b2f3d,0xffffff], glass:0xc9d1ea };
+const matCache = new Map();
+// Wetter und Tageszeit wirken über gemeinsame Uniforms auf Karte, Untergrund, Gebäude, Bäume und Fahrzeuge (nicht auf Auslastungsfarben, Linie und Beschriftungen)
+const WX = {uSat:{value:1}, uCon:{value:1}, uTint:{value:new THREE.Vector3(1,1,1)}};
+function applyWeather(mat, mute = false){
+  mat.onBeforeCompile = sh => {
+    Object.assign(sh.uniforms, WX);
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uSat; uniform float uCon; uniform vec3 uTint;');
+    if(mute) sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
+      float lm = dot(diffuseColor.rgb, vec3(.2126,.7152,.0722));
+      diffuseColor.rgb = mix(mix(vec3(lm), diffuseColor.rgb, ${MUTE.sat}), vec3(${MUTE.k.join(',')}), ${MUTE.mix});`);
+    sh.fragmentShader = sh.fragmentShader.replace('#include <opaque_fragment>', `#include <opaque_fragment>
+      float lw = dot(gl_FragColor.rgb, vec3(.2126,.7152,.0722));
+      gl_FragColor.rgb = mix(vec3(lw), gl_FragColor.rgb, uSat);
+      gl_FragColor.rgb = (gl_FragColor.rgb - .45)*uCon + .45;
+      gl_FragColor.rgb *= uTint;`);
+  };
+  mat.customProgramCacheKey = () => 'wx' + (mute ? 1 : 0);
+  return mat;
+}
+const std = (c, o={}) => { const k = c + JSON.stringify(o); if(!matCache.has(k)) matCache.set(k, applyWeather(new THREE.MeshStandardMaterial({color:c, roughness:.95, metalness:0, ...o}))); return matCache.get(k); };
+
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(C.bg);
+
+const FRUSTUM = 300;
+const cam = new THREE.OrthographicCamera(-1,1,1,-1,-80000,80000);
+let aspect = 1;
+function fit(){
+  const w = innerWidth, h = innerHeight; aspect = w/h;
+  cam.left = -FRUSTUM*aspect; cam.right = FRUSTUM*aspect; cam.top = FRUSTUM; cam.bottom = -FRUSTUM;
+  cam.updateProjectionMatrix(); renderer.setSize(w,h);
+}
+addEventListener('resize', fit); fit();
+
+/* ---------- Licht: Schatten folgen dem sichtbaren Ausschnitt ---------- */
+const hemi = new THREE.HemisphereLight(0xffffff, 0xc9d0ea, 1.35); scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xfff4e6, 2.0);
+sun.castShadow = true;
+sun.shadow.mapSize.set(4096, 4096);
+sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.5;
+const SUN_OFFSET = new THREE.Vector3(-260, 1200, -825);
+scene.add(sun, sun.target);
+let shadowZoom = 0;
+function updateSun(target){
+  sun.target.position.copy(target); sun.position.copy(target).add(SUN_OFFSET);
+  if(shadowZoom !== cam.zoom){
+    shadowZoom = cam.zoom;
+    const e = Math.min(2200, FRUSTUM*Math.max(aspect,1)*1.8/cam.zoom);
+    Object.assign(sun.shadow.camera, {left:-e, right:e, top:e, bottom:-e, near:1, far:5000});
+    sun.shadow.camera.updateProjectionMatrix();
+  }
+}
+
+/* ---------- Boden: die Standardkarte (unten) liefert alle Bodenfarben; hier nur Hintergrund und Schatten ---------- */
+const bgPlane = new THREE.Mesh(new THREE.PlaneGeometry(40000,40000), new THREE.MeshBasicMaterial({color:C.bg}));  // unbeleuchtet: exakt die Hintergrundfarbe
+bgPlane.rotation.x = -Math.PI/2; bgPlane.position.y = -3; scene.add(bgPlane);
+const shadowCatcher = new THREE.Mesh(new THREE.PlaneGeometry(2*HX, 2*HZ), new THREE.ShadowMaterial({opacity:.18}));  // zeigt nur die Schatten der Gebäude auf der Karte
+shadowCatcher.rotation.x = -Math.PI/2; shadowCatcher.position.y = .2; shadowCatcher.renderOrder = 100; shadowCatcher.receiveShadow = true; scene.add(shadowCatcher);
+
+/* Dämpfung der Kartenfarben: eine Definition für den Kachel-Shader und für alle Farben, die darauf passen müssen */
+const MUTE = {sat:.32, mix:.22, k:[.93,.94,.97]};
+function muted(hex){
+  const c = new THREE.Color(hex), l = .2126*c.r + .7152*c.g + .0722*c.b;
+  const o = [c.r,c.g,c.b].map((v,i) => (l + (v-l)*MUTE.sat)*(1-MUTE.mix) + MUTE.k[i]*MUTE.mix);
+  return new THREE.Color().setRGB(o[0], o[1], o[2], THREE.LinearSRGBColorSpace);
+}
+
+/* ---------- Standardkarte (Rasterkacheln) unter und um die 3D-Fläche ---------- */
+const TILE_URL = (z,x,y) => `https://tile.openstreetmap.org/${z}/${x}/${y}.png`;  // OSM-Standardkarte, 256 px (Prototyp; fürs Produkt eigener Kachelserver)
+const [LAT0, LON0] = CITY.meta.center, KLAT = 110574, KLON = 111320*Math.cos(LAT0*Math.PI/180);  // dieselbe Projektion wie die Daten
+const toLocal = (lat,lon) => [(lon-LON0)*KLON, -(lat-LAT0)*KLAT];
+const fromLocal = (x,z) => [LAT0 - z/KLAT, LON0 + x/KLON];
+const tileLon = (x,z) => x/2**z*360-180;
+const tileLat = (y,z) => 180/Math.PI*Math.atan(Math.sinh(Math.PI-2*Math.PI*y/2**z));
+const lonToX = (lon,z) => Math.floor((lon+180)/360*2**z);
+const latToY = (lat,z) => { const r = lat*Math.PI/180; return Math.floor((1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2*2**z); };
+const texLoader = new THREE.TextureLoader(); texLoader.setCrossOrigin('anonymous');
+const maxAniso = renderer.capabilities.getMaxAnisotropy();
+const mapLayers = [{y:-1.2, tiles:new Map()}, {y:-.8, tiles:new Map()}];  // grob (immer da) und fein (je nach Zoom)
+function tileMesh(z,x,y,yPos){
+  const [xa,za] = toLocal(tileLat(y,z), tileLon(x,z)), [xb,zb] = toLocal(tileLat(y+1,z), tileLon(x+1,z));
+  const geo = new THREE.PlaneGeometry(xb-xa, zb-za); geo.rotateX(-Math.PI/2);
+  const mat = new THREE.MeshBasicMaterial({color:0xffffff}), mesh = new THREE.Mesh(geo, mat);
+  applyWeather(mat, true);
+  mesh.position.set((xa+xb)/2, yPos, (za+zb)/2); mesh.visible = false; scene.add(mesh);
+  texLoader.load(TILE_URL(z,x,y), t => { t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = maxAniso; mat.map = t; mat.needsUpdate = true; mesh.visible = true; }, undefined, () => console.warn('Kachel fehlt', z, x, y));
+  return mesh;
+}
+function dropTile(m){ scene.remove(m); m.geometry.dispose(); if(m.material.map) m.material.map.dispose(); m.material.dispose(); }
+const rayCaster = new THREE.Raycaster(), hit = new THREE.Vector3();
+function syncLayer(layer, z, b){
+  const want = new Set();
+  if(z){
+    const [laN, loW] = fromLocal(b.x0, b.z0), [laS, loE] = fromLocal(b.x1, b.z1);
+    const xa = lonToX(loW,z), xb = lonToX(loE,z), ya = latToY(laN,z), yb = latToY(laS,z);
+    if((xb-xa+1)*(yb-ya+1) <= 120) for(let x=xa;x<=xb;x++) for(let y=ya;y<=yb;y++) want.add(`${z}/${x}/${y}`);
+  }
+  for(const [k,m] of layer.tiles) if(!want.has(k)){ dropTile(m); layer.tiles.delete(k); }
+  for(const k of want) if(!layer.tiles.has(k)){ const [z_,x,y] = k.split('/').map(Number); layer.tiles.set(k, tileMesh(z_,x,y,layer.y)); }
+}
+function updateTiles(){
+  let x0=1e9, x1=-1e9, z0=1e9, z1=-1e9;
+  for(const [nx,ny] of [[-1,-1],[1,-1],[-1,1],[1,1]]){
+    rayCaster.setFromCamera({x:nx, y:ny}, cam);
+    // Schnitt der Geraden mit dem Boden (y = 0); bei der Orthokamera liegen die Strahlenanfänge unter dem Boden, "nach vorn" genügt nicht
+    const o = rayCaster.ray.origin, d = rayCaster.ray.direction;
+    hit.copy(o).addScaledVector(d, -o.y/d.y);
+    x0=Math.min(x0,hit.x); x1=Math.max(x1,hit.x); z0=Math.min(z0,hit.z); z1=Math.max(z1,hit.z);
+  }
+  if(x0 > x1) return;
+  const m = .08*Math.max(x1-x0, z1-z0), b = {x0:x0-m, x1:x1+m, z0:z0-m, z1:z1+m};
+  const mpp = (2*FRUSTUM*aspect/cam.zoom)/innerWidth;                     // Meter pro Bildschirmpixel
+  const zFine = Math.round(Math.log2(156543.03*Math.cos(LAT0*Math.PI/180)/mpp));  // 256-px-Kacheln
+  syncLayer(mapLayers[0], 11, b);
+  syncLayer(mapLayers[1], zFine > 11 ? Math.min(zFine, 19) : null, b);
+}
+
+/* ---------- Geometrie-Helfer ---------- */
+const ring = f => { const v=[]; for(let i=0;i<f.length;i+=2) v.push(new THREE.Vector2(f[i], -f[i+1])); return v; };
+function shapeOf(p){ const s = new THREE.Shape(ring(p.r)); (p.h||[]).forEach(h => s.holes.push(new THREE.Path(ring(h)))); return s; }
+
+/* ---------- Untergrund aus eigenen Daten, in den Farben der Standardkarte ---------- */
+// Füllfarben der OSM-Standardkarte; sie laufen durch dieselbe Dämpfung (muted) wie die Kacheln, daher sieht man keinen Übergang.
+const OSM = {
+  land:0xf2efe9, water:0xaad3df, building:0xd9d0c9,
+  green:{park:0xc8facc, grass:0xcdebb0, forest:0xadd19e, cemetery:0xaacbaf},
+  landuse:{residential:0xe0dfdf, commercial:0xf2dad9, retail:0xffd6d1, industrial:0xebdbe8, railway:0xebdbe8, construction:0xc7c7b4,
+           allotments:0xc9e1bf, farmland:0xeef0d5, farmyard:0xeef0d5, garages:0xdfddce, brownfield:0xc7c7b4},
+  road:{motorway:[0xe892a2,0xdc2a67], trunk:[0xf9b29c,0xc84e2f], primary:[0xfcd6a4,0xa06b00], secondary:[0xf7fabf,0x707d05],
+        tertiary:[0xffffff,0x8f8f8f], unclassified:[0xffffff,0xbbbbbb], residential:[0xffffff,0xbbbbbb], living_street:[0xededed,0xbbbbbb],
+        service:[0xffffff,0xbbbbbb], pedestrian:[0xdddde8,0xbbbbbb]}   // [Füllung, Rand]
+};
+const ROAD_ORDER = ['service','pedestrian','living_street','residential','unclassified','tertiary','secondary','primary','trunk','motorway'];
+const flatMats = [], flatMeshes = [];   // Untergrund blendet mit dem Zoom ein, weit draußen zeigt nur die Karte
+let flatOrder = 1;
+function flatMat(hex){ const m = applyWeather(new THREE.MeshBasicMaterial({color:muted(hex), transparent:true, opacity:0, depthWrite:false, side:THREE.DoubleSide})); flatMats.push(m); return m; }
+function flatAdd(geo, hex){ const m = new THREE.Mesh(geo, flatMat(hex)); m.renderOrder = flatOrder++; m.visible = false; m.receiveShadow = false; scene.add(m); flatMeshes.push(m); return m; }
+function flatPolys(items, hex, y){
+  const geos = [];
+  for(const p of items){ try { const g = new THREE.ShapeGeometry(shapeOf(p)); g.rotateX(-Math.PI/2); g.translate(0,y,0); geos.push(g); } catch(e){} }
+  if(geos.length) flatAdd(mergeGeometries(geos), hex);
+}
+/* Linienzug als flaches Band, Gelenke als kleine Scheiben */
+function addRibbon(pos, pts, w, y){
+  const hw = w/2, push = (x,z) => pos.push(x, y, z);
+  for(let i=0;i+3<pts.length;i+=2){
+    const x1=pts[i], z1=pts[i+1], x2=pts[i+2], z2=pts[i+3], dx=x2-x1, dz=z2-z1, len=Math.hypot(dx,dz);
+    if(len < .01) continue;
+    const nx=-dz/len*hw, nz=dx/len*hw;
+    push(x1+nx,z1+nz); push(x2-nx,z2-nz); push(x1-nx,z1-nz);
+    push(x1+nx,z1+nz); push(x2+nx,z2+nz); push(x2-nx,z2-nz);
+  }
+  for(let i=2;i+2<pts.length;i+=2){
+    const cx=pts[i], cz=pts[i+1];
+    for(let k=0;k<8;k++){
+      const a0=k/8*Math.PI*2, a1=(k+1)/8*Math.PI*2;
+      push(cx,cz); push(cx+Math.cos(a0)*hw, cz+Math.sin(a0)*hw); push(cx+Math.cos(a1)*hw, cz+Math.sin(a1)*hw);
+    }
+  }
+}
+function ribbonMesh(pos, hex){
+  if(!pos.length) return;
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos,3));
+  const n = new Float32Array(pos.length); for(let i=1;i<n.length;i+=3) n[i]=1;
+  g.setAttribute('normal', new THREE.BufferAttribute(n,3));
+  flatAdd(g, hex);
+}
+const byKey = (arr, key) => { const m = new Map(); for(const x of arr){ const k = key(x); if(!m.has(k)) m.set(k, []); m.get(k).push(x); } return m; };
+
+function buildGround(){
+  const base = new THREE.PlaneGeometry(2*HX, 2*HZ); base.rotateX(-Math.PI/2); base.translate(0,.01,0);
+  flatAdd(base, OSM.land);
+  for(const [k, items] of byKey(CITY.land || [], p => p.k)) flatPolys(items, OSM.landuse[k] ?? OSM.land, .02);
+  for(const [k, items] of byKey(CITY.parks, p => p.k || 'grass')) flatPolys(items, OSM.green[k] ?? OSM.green.grass, .03);
+  flatPolys(CITY.water, OSM.water, .04);
+  { const pos = []; CITY.waterLines.forEach(l => addRibbon(pos, l.p, l.w, .04)); ribbonMesh(pos, OSM.water); }
+  // Straßen: erst alle Ränder, dann alle Füllungen, jeweils nach Wichtigkeit, damit Kreuzungen sauber aussehen
+  const roads = byKey(CITY.roads, r => r.c || 'residential');
+  for(const c of ROAD_ORDER){ const items = roads.get(c); if(!items) continue;
+    const pos = []; items.forEach(r => addRibbon(pos, r.p, r.w + 1.4, .06)); ribbonMesh(pos, (OSM.road[c] || OSM.road.residential)[1]); }
+  for(const c of ROAD_ORDER){ const items = roads.get(c); if(!items) continue;
+    const pos = []; items.forEach(r => addRibbon(pos, r.p, r.w, .08)); ribbonMesh(pos, (OSM.road[c] || OSM.road.residential)[0]); }
+}
+
+/* ---------- Aufbau ---------- */
+const washEl = document.getElementById('wash');
+const tall = [];  // Ebenen, die mit dem Zoom aus der Fläche in die Höhe wachsen
+async function build(){
+  buildGround();
+  await tick();
+  // Gebäude: ein zusammengefasstes Mesh, Farbe je Eckpunkt. Das Dach hat die Farbe des Gebäude-Fußabdrucks der Karte,
+  // damit das Gebäude nahtlos aus der Karte herauswächst (Beleuchtung dämpft Flächen nach oben auf rund 0,92).
+  const BLD_TOP = muted(OSM.building).multiplyScalar(1/.92), BLD_SIDE = BLD_TOP.clone().multiplyScalar(1.04);
+  {
+    const geos = [], list = CITY.buildings;
+    for(let i=0;i<list.length;i++){
+      const b = list[i];
+      try {
+        const g = new THREE.ExtrudeGeometry(shapeOf(b), {depth:b.t, bevelEnabled:false});
+        g.rotateX(-Math.PI/2);
+        const nrm = g.attributes.normal, col = new Float32Array(nrm.count*3);
+        const top = BLD_TOP, side = BLD_SIDE;
+        for(let v=0; v<nrm.count; v++){ const c = nrm.getY(v) > .5 ? top : side; col[3*v]=c.r; col[3*v+1]=c.g; col[3*v+2]=c.b; }
+        g.setAttribute('color', new THREE.BufferAttribute(col,3));
+        geos.push(g);
+      } catch(e){}
+      if(i % 600 === 599) await tick();
+    }
+    const m = new THREE.Mesh(mergeGeometries(geos), std(0xffffff, {vertexColors:true}));
+    m.castShadow = m.receiveShadow = true; scene.add(m); tall.push(m);
+  }
+  await tick();
+
+  // Bäume: Straßenbäume aus den Daten, Grünflächen werden aufgefüllt
+  {
+    const trees = CITY.trees.length > 4000 ? CITY.trees.filter((_,i)=> i % Math.ceil(CITY.trees.length/4000) === 0) : CITY.trees.slice();
+    const inside = (x,z,r) => { let c=false; for(let i=0,j=r.length-2;i<r.length;j=i,i+=2){
+      const xi=r[i],zi=r[i+1],xj=r[j],zj=r[j+1]; if((zi>z)!==(zj>z) && x < (xj-xi)*(z-zi)/(zj-zi)+xi) c=!c; } return c; };
+    for(const p of CITY.parks){
+      const r = p.r; let a=0; for(let i=0,j=r.length-2;i<r.length;j=i,i+=2) a += r[j]*r[i+1]-r[i]*r[j+1]; a = Math.abs(a)/2;
+      let xs=[1e9,-1e9], zs=[1e9,-1e9]; for(let i=0;i<r.length;i+=2){ xs=[Math.min(xs[0],r[i]),Math.max(xs[1],r[i])]; zs=[Math.min(zs[0],r[i+1]),Math.max(zs[1],r[i+1])]; }
+      let want = Math.min(a/200, 300), guard = 0;
+      while(want > 0 && guard++ < want*12){ const x=R(xs[0],xs[1]), z=R(zs[0],zs[1]); if(inside(x,z,r)){ trees.push([x,z]); want--; } }
+    }
+    const crownGeo = new THREE.SphereGeometry(1,12,9), trunkGeo = new THREE.CylinderGeometry(.25,.32,1,7);
+    const crowns = new THREE.InstancedMesh(crownGeo, std(0xffffff), trees.length);
+    const trunks = new THREE.InstancedMesh(trunkGeo, std(C.trunk), trees.length);
+    const d = new THREE.Object3D(), col = new THREE.Color();
+    trees.forEach(([x,z],i)=>{
+      const k = R(.8,1.25);
+      d.rotation.set(0,0,0);
+      d.position.set(x, 5.2*k, z); d.scale.set(3.2*k, 3.4*k, 3.2*k); d.updateMatrix(); crowns.setMatrixAt(i,d.matrix); crowns.setColorAt(i, col.set(pick(C.tree)));
+      d.position.set(x, 1.6*k, z); d.scale.set(k, 3.2*k, k); d.updateMatrix(); trunks.setMatrixAt(i,d.matrix);
+    });
+    crowns.castShadow = trunks.castShadow = true; crowns.receiveShadow = true;
+    scene.add(crowns, trunks); tall.push(crowns, trunks);
+  }
+}
+
+/* ---------- Verkehr: Modellrechnung (keine Messdaten) ---------- */
+// Freie Geschwindigkeit (km/h) und Kapazität (Fz/h je Richtung) je Straßenklasse. Annahmen, später durch Visum oder Messwerte ersetzbar.
+const ROADCLASS = {
+  motorway:{v:80,cap:3600}, trunk:{v:60,cap:2400}, primary:{v:50,cap:1500}, secondary:{v:50,cap:1100},
+  tertiary:{v:40,cap:800}, unclassified:{v:30,cap:600}, residential:{v:30,cap:400}, living_street:{v:10,cap:150} };
+// Verlaufsfarben der Auslastung (polarisiert): kalt (blau) bis 10 %, optimal (grün), ab 65 % Warnung (gelb), ab 100 % Alarm (rot)
+const LOAD_STOPS = [[0,0x3d5afe],[.10,0x1fb5c9],[.25,0x2fc66b],[.50,0x8ccf3a],[.65,0xf2d12b],[.85,0xf59a23],[1,0xe5322d],[1.25,0x9c0f2c]];
+const LOAD_MAX = LOAD_STOPS[LOAD_STOPS.length-1][0];
+const _c0 = new THREE.Color(), _c1 = new THREE.Color();
+function loadColor(u, out = new THREE.Color()){
+  u = Math.max(0, Math.min(LOAD_MAX, u));
+  let i = 1; while(i < LOAD_STOPS.length-1 && u > LOAD_STOPS[i][0]) i++;
+  const [ua, ca] = LOAD_STOPS[i-1], [ub, cb] = LOAD_STOPS[i];
+  return out.copy(_c0.set(ca)).lerp(_c1.set(cb), (u-ua)/(ub-ua));
+}
+
+class Heap {  // Min-Heap für Dijkstra
+  constructor(n){ this.k = new Float64Array(n); this.v = new Int32Array(n); this.size = 0; this.topK = 0; this.topV = 0; }
+  push(k, v){ let i = this.size++; const K = this.k, V = this.v; while(i > 0){ const p = (i-1) >> 1; if(K[p] <= k) break; K[i] = K[p]; V[i] = V[p]; i = p; } K[i] = k; V[i] = v; }
+  pop(){ const K = this.k, V = this.v; this.topK = K[0]; this.topV = V[0]; const k = K[--this.size], v = V[this.size]; let i = 0;
+    for(;;){ let c = 2*i+1; if(c >= this.size) break; if(c+1 < this.size && K[c+1] < K[c]) c++; if(K[c] >= k) break; K[i] = K[c]; V[i] = V[c]; i = c; }
+    K[i] = k; V[i] = v; }
+}
+
+async function buildTrafficModel(onProgress){
+  // 1) Netz als gerichteter Graph
+  const nid = new Map(), NX = [], NZ = [], out = [], eFrom = [], eTo = [], eLen = [], eCls = [], eW = [], segs = [];
+  const node = (id,x,z) => { let i = nid.get(id); if(i === undefined){ i = NX.length; nid.set(id,i); NX.push(x); NZ.push(z); out.push([]); } return i; };
+  const addEdge = (a,b,len,cls,w) => { const e = eFrom.length; eFrom.push(a); eTo.push(b); eLen.push(len); eCls.push(cls); eW.push(w); out[a].push(e); return e; };
+  for(const r of CITY.roads){
+    if(!r.d) continue;
+    const cls = ROADCLASS[r.c] ? r.c : 'residential';
+    for(let i=1;i<r.n.length;i++){
+      const a = node(r.n[i-1], r.p[2*i-2], r.p[2*i-1]), b = node(r.n[i], r.p[2*i], r.p[2*i+1]);
+      if(a === b) continue;
+      const len = Math.hypot(NX[b]-NX[a], NZ[b]-NZ[a]); if(len < .5) continue;
+      segs.push({e1:addEdge(a,b,len,cls,r.w), e2:addEdge(b,a,len,cls,r.w), a, b, w:r.w});
+    }
+  }
+  const N = NX.length, M = eFrom.length;
+  const vfree = new Float32Array(M), cap = new Float32Array(M), tcost = new Float32Array(M);
+  for(let e=0;e<M;e++){ const c = ROADCLASS[eCls[e]]; vfree[e] = c.v/3.6; cap[e] = c.cap; tcost[e] = eLen[e]/vfree[e]; }
+
+  // 2) Verkehrszellen: Gewicht = Geschossfläche der Gebäude (Fläche × Geschosse) in 250-m-Zellen
+  const CELL = 250, gx = Math.ceil(2*HX/CELL), gz = Math.ceil(2*HZ/CELL), W = new Float64Array(gx*gz);
+  for(const b of CITY.buildings){
+    const r = b.r; let sx = 0, sz = 0, a2 = 0;
+    for(let i=0, j=r.length-2; i<r.length; j=i, i+=2){ a2 += r[j]*r[i+1] - r[i]*r[j+1]; sx += r[i]; sz += r[i+1]; }
+    const n = r.length/2, ix = Math.floor((sx/n+HX)/CELL), iz = Math.floor((sz/n+HZ)/CELL);
+    if(ix >= 0 && iz >= 0 && ix < gx && iz < gz) W[iz*gx+ix] += Math.abs(a2)/2 * Math.min(b.t, 40)/3.2;
+  }
+  const NC = 150, ngrid = new Map(), nkey = (ix,iz) => ix*100003 + iz;
+  for(let i=0;i<N;i++){ const k = nkey(Math.floor((NX[i]+HX)/NC), Math.floor((NZ[i]+HZ)/NC)); if(!ngrid.has(k)) ngrid.set(k, []); ngrid.get(k).push(i); }
+  const nearest = (x,z) => { const cx = Math.floor((x+HX)/NC), cz = Math.floor((z+HZ)/NC); let best = -1, bd = Infinity;
+    for(let r=0; r<=6 && best < 0; r++) for(let dx=-r; dx<=r; dx++) for(let dz=-r; dz<=r; dz++){
+      if(Math.max(Math.abs(dx),Math.abs(dz)) !== r) continue;
+      for(const i of ngrid.get(nkey(cx+dx, cz+dz)) || []){ const d = (NX[i]-x)**2 + (NZ[i]-z)**2; if(d < bd){ bd = d; best = i; } } }
+    return best; };
+  const zones = [];
+  [...W.keys()].filter(i => W[i] > 0).sort((a,b) => W[b]-W[a]).slice(0, 420).forEach(i => {
+    const n = nearest(((i%gx)+.5)*CELL-HX, (Math.floor(i/gx)+.5)*CELL-HZ); if(n >= 0) zones.push({node:n, w:W[i]});
+  });
+  const sumW = zones.reduce((s,z) => s+z.w, 0);
+
+  // 3) Umlegung: jede Zelle verteilt ihre Fahrten nach Gewicht und Fahrzeit (Gravitationsansatz) auf kürzeste Wege
+  const flow = new Float64Array(M), dist = new Float64Array(N), prevE = new Int32Array(N), accum = new Float64Array(N), order = new Int32Array(N);
+  const heap = new Heap(M+N+16), TAU = 900;   // Fahrzeit-Reichweite in Sekunden
+  for(let zi=0; zi<zones.length; zi++){
+    const o = zones[zi]; dist.fill(Infinity); prevE.fill(-1); heap.size = 0; dist[o.node] = 0; heap.push(0, o.node); let cnt = 0;
+    while(heap.size){ heap.pop(); const d = heap.topK, u = heap.topV; if(d > dist[u]) continue; order[cnt++] = u;
+      for(const e of out[u]){ const v = eTo[e], nd = d + tcost[e]; if(nd < dist[v]){ dist[v] = nd; prevE[v] = e; heap.push(nd, v); } } }
+    let S = 0; const wj = zones.map((z,j) => { if(j === zi || !isFinite(dist[z.node])) return 0; const w = z.w*Math.exp(-dist[z.node]/TAU); S += w; return w; });
+    if(S > 0){ const T = o.w/sumW*1e5; zones.forEach((z,j) => { if(wj[j] > 0) accum[z.node] += T*wj[j]/S; });
+      for(let k=cnt-1;k>=0;k--){ const v = order[k], e = prevE[v]; if(e < 0) continue; flow[e] += accum[v]; accum[eFrom[e]] += accum[v]; accum[v] = 0; } }
+    accum[o.node] = 0;
+    if(zi % 12 === 11){ onProgress && onProgress((zi+1)/zones.length); await tick(); }
+  }
+
+  // 4) Eichung der Größenordnung: das 90-%-Quantil der Hauptstraßen liegt bei 85 % Auslastung. Das ist eine Modellannahme.
+  const arterial = new Set(['motorway','trunk','primary','secondary']), ratio = [];
+  for(let e=0;e<M;e++) if(flow[e] > 0 && arterial.has(eCls[e])) ratio.push(flow[e]/cap[e]);
+  ratio.sort((a,b) => a-b);
+  const scale = .85/(ratio[Math.floor(ratio.length*.9)] || 1), f = new Float32Array(M), util = new Float32Array(M);
+  // Grundverkehr: Anlieger-, Liefer- und Parksuchverkehr nach Bebauungsdichte der Umgebung, damit auch Straßen ohne Durchgangsverkehr eine Auslastung haben
+  const wsorted = [...W].filter(x => x > 0).sort((a,b) => a-b), wref = wsorted[Math.floor(wsorted.length*.95)] || 1;
+  const density = e => { const a = eFrom[e], b = eTo[e], ix = Math.floor(((NX[a]+NX[b])/2+HX)/CELL), iz = Math.floor(((NZ[a]+NZ[b])/2+HZ)/CELL);
+    return ix >= 0 && iz >= 0 && ix < gx && iz < gz ? Math.min(1, W[iz*gx+ix]/wref) : 0; };
+  for(let e=0;e<M;e++){ f[e] = flow[e]*scale + cap[e]*(.04 + .2*density(e)); util[e] = f[e]/cap[e]; }
+  for(const s of segs) s.u = Math.max(util[s.e1], util[s.e2]);
+  return {N, M, NX:Float32Array.from(NX), NZ:Float32Array.from(NZ), out, eFrom:Int32Array.from(eFrom), eTo:Int32Array.from(eTo),
+          eLen:Float32Array.from(eLen), eW:Float32Array.from(eW), vfree, cap, flow:f, util, segs};
+}
+
+/* Farbebene der Auslastung: Bänder mit Mindestbreite in Bildschirmpixeln; die Farbe entsteht im Shader aus Auslastung × Tagesgang */
+function makeLoadOverlay(model){
+  const segs = model.segs.filter(s => s.u > 0).sort((a,b) => a.u-b.u), n = segs.length*6;   // aufsteigend: hohe Werte liegen oben
+  const pos = new Float32Array(n*3), off = new Float32Array(n*2), dir = new Float32Array(n*2), end = new Float32Array(n), wid = new Float32Array(n), uu = new Float32Array(n);
+  let k = 0;
+  const put = (x,z,ox,oz,dx,dz,en,w,u) => { pos[3*k] = x; pos[3*k+1] = .14; pos[3*k+2] = z; off[2*k] = ox; off[2*k+1] = oz; dir[2*k] = dx; dir[2*k+1] = dz; end[k] = en; wid[k] = w; uu[k] = u; k++; };
+  for(const s of segs){
+    const ax = model.NX[s.a], az = model.NZ[s.a], bx = model.NX[s.b], bz = model.NZ[s.b], dx = bx-ax, dz = bz-az, l = Math.hypot(dx,dz) || 1, ux = dx/l, uz = dz/l, nx = -uz, nz = ux, u = s.u;
+    put(ax,az, nx,nz, ux,uz, -1, s.w, u); put(bx,bz, -nx,-nz, ux,uz, 1, s.w, u); put(ax,az, -nx,-nz, ux,uz, -1, s.w, u);
+    put(ax,az, nx,nz, ux,uz, -1, s.w, u); put(bx,bz, nx,nz, ux,uz, 1, s.w, u); put(bx,bz, -nx,-nz, ux,uz, 1, s.w, u);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos,3)); g.setAttribute('aOff', new THREE.BufferAttribute(off,2));
+  g.setAttribute('aDir', new THREE.BufferAttribute(dir,2)); g.setAttribute('aEnd', new THREE.BufferAttribute(end,1));
+  g.setAttribute('aW', new THREE.BufferAttribute(wid,1)); g.setAttribute('aU', new THREE.BufferAttribute(uu,1));
+  const stopC = LOAD_STOPS.map(([,c]) => { const col = new THREE.Color(c); return new THREE.Vector3(col.r, col.g, col.b); });
+  const mat = new THREE.ShaderMaterial({ transparent:true, depthWrite:false, side:THREE.DoubleSide,
+    uniforms:{uMpp:{value:1}, uPx:{value:3.4}, uOpacity:{value:1}, uScale:{value:1}, uStopU:{value:LOAD_STOPS.map(s => s[0])}, uStopC:{value:stopC}},
+    vertexShader:`attribute vec2 aOff; attribute vec2 aDir; attribute float aEnd; attribute float aW; attribute float aU;
+      uniform float uMpp; uniform float uPx; uniform float uScale; uniform float uStopU[8]; uniform vec3 uStopC[8]; varying vec3 vC;
+      vec3 loadColor(float u){ u = clamp(u, 0., ${LOAD_MAX.toFixed(3)});
+        for(int i=1;i<8;i++){ if(u <= uStopU[i]){ float t = (u-uStopU[i-1])/(uStopU[i]-uStopU[i-1]); return mix(uStopC[i-1], uStopC[i], t); } }
+        return uStopC[7]; }
+      void main(){ vC = loadColor(aU*uScale); float w = max(aW, uPx*uMpp); vec3 p = position;
+        p.xz += aOff*.5*w + aDir*aEnd*.5*w;   // Breite quer, an den Enden eine halbe Breite verlängert (füllt Knicke)
+        gl_Position = projectionMatrix*modelViewMatrix*vec4(p,1.); }`,
+    fragmentShader:`uniform float uOpacity; varying vec3 vC;
+      void main(){ gl_FragColor = vec4(vC, uOpacity);
+        #include <colorspace_fragment>
+      }` });
+  const mesh = new THREE.Mesh(g, mat); mesh.renderOrder = 60; mesh.frustumCulled = false; scene.add(mesh);
+  return mesh;
+}
+
+/* Fahrzeuge: Anzahl im sichtbaren Ausschnitt folgt der Verkehrsmenge (Fz/h geteilt durch Geschwindigkeit = Fz je Meter), skaliert mit dem Tagesgang f */
+function makeCars(model){
+  const VMAX = 6000, {NX, NZ, out, eFrom, eTo, eLen, eW, vfree, flow, util} = model, M = model.M;
+  const bodies = new THREE.InstancedMesh(new THREE.BoxGeometry(4.4,1.1,1.9), std(0xffffff), VMAX);
+  const cabins = new THREE.InstancedMesh(new THREE.BoxGeometry(2.3,.9,1.7), std(C.glass), VMAX);
+  // Schatten als weiche dunkle Fläche unter dem Fahrzeug, versetzt in Schattenrichtung (echte Schatten sind für so kleine Objekte zu fein)
+  const shGeo = new THREE.PlaneGeometry(1,1); shGeo.rotateX(-Math.PI/2);
+  const shMat = new THREE.MeshBasicMaterial({color:0x000000, transparent:true, opacity:.2, depthWrite:false});
+  const shadows = new THREE.InstancedMesh(shGeo, shMat, VMAX); shadows.renderOrder = 70;
+  bodies.count = cabins.count = shadows.count = 0; bodies.frustumCulled = cabins.frustumCulled = shadows.frustumCulled = false;
+  const group = new THREE.Group(); group.add(shadows, bodies, cabins); scene.add(group);
+  const SH = new THREE.Vector2(-SUN_OFFSET.x, -SUN_OFFSET.z).normalize();
+  const lam = new Float32Array(M), ux = new Float32Array(M), uz = new Float32Array(M);
+  for(let e=0;e<M;e++){
+    const a = eFrom[e], b = eTo[e], l = eLen[e];
+    ux[e] = (NX[b]-NX[a])/l; uz[e] = (NZ[b]-NZ[a])/l;
+    lam[e] = flow[e]/3600/(vfree[e]/(1 + .6*util[e]**3));   // Fahrzeuge je Meter und Richtung zur Spitzenstunde
+  }
+  const GC = 300, grid = new Map(), gk = (ix,iz) => ix*100003 + iz;
+  for(let e=0;e<M;e++){ if(lam[e] <= 0) continue; const k = gk(Math.floor(((NX[eFrom[e]]+NX[eTo[e]])/2+HX)/GC), Math.floor(((NZ[eFrom[e]]+NZ[eTo[e]])/2+HZ)/GC));
+    if(!grid.has(k)) grid.set(k, []); grid.get(k).push(e); }
+  const V = [], palette = C.car.map(c => new THREE.Color(c)), tau = Math.PI*2;
+  const d = new THREE.Object3D(), up = new THREE.Matrix4().makeTranslation(-.2,.95,0), m = new THREE.Matrix4(), ds = new THREE.Object3D();
+  const mid = e => [(NX[eFrom[e]]+NX[eTo[e]])/2, (NZ[eFrom[e]]+NZ[eTo[e]])/2];
+  const remove = i => { const last = V.pop(); if(i < V.length){ V[i] = last; bodies.setColorAt(i, last.col); } };
+  let expected = 0, shown = 0;
+  function rebalance(cx, cz, R, f){
+    const cand = [], cum = []; let sum = 0;
+    for(let ix = Math.floor((cx-R+HX)/GC); ix <= Math.floor((cx+R+HX)/GC); ix++) for(let iz = Math.floor((cz-R+HZ)/GC); iz <= Math.floor((cz+R+HZ)/GC); iz++)
+      for(const e of grid.get(gk(ix,iz)) || []){ const [x,z] = mid(e); if((x-cx)**2 + (z-cz)**2 < R*R){ sum += lam[e]*eLen[e]; cand.push(e); cum.push(sum); } }
+    expected = sum*f; const target = Math.min(VMAX, Math.round(expected));
+    for(let i=V.length-1;i>=0;i--){ const [x,z] = mid(V[i].e); if((x-cx)**2 + (z-cz)**2 > (R*1.1)**2) remove(i); }
+    while(V.length < target && cand.length){
+      let lo = 0, hi = cand.length-1, r = Math.random()*sum; while(lo < hi){ const md = (lo+hi) >> 1; if(cum[md] < r) lo = md+1; else hi = md; }
+      const e = cand[lo], v = {e, s:Math.random()*eLen[e], hdg:Math.atan2(-uz[e], ux[e]), col:palette[Math.floor(Math.random()*palette.length)]};
+      V.push(v); bodies.setColorAt(V.length-1, v.col);
+    }
+    while(V.length > target) remove(V.length-1);
+    if(bodies.instanceColor) bodies.instanceColor.needsUpdate = true;
+    bodies.count = cabins.count = shadows.count = V.length; shown = V.length;
+  }
+  function next(e){   // am Knoten weiter: Abbiegeanteile folgen den Verkehrsmengen der abgehenden Kanten
+    const n = eTo[e]; let tot = 0; const opts = out[n].filter(k => eTo[k] !== eFrom[e]);
+    if(!opts.length) return out[n].find(k => eTo[k] === eFrom[e]) ?? e;
+    for(const k of opts) tot += flow[k] + 1; let r = Math.random()*tot;
+    for(const k of opts){ r -= flow[k] + 1; if(r <= 0) return k; } return opts[opts.length-1];
+  }
+  function update(dt, sc, f, shadowOpacity){   // sc: Symbolgröße; f: Tagesgang (Stau wächst mit der Auslastung)
+    shMat.opacity = shadowOpacity;
+    for(let i=0;i<V.length;i++){
+      const v = V[i]; let e = v.e; v.s += (vfree[e]/(1 + .6*(util[e]*f)**3))*dt;
+      while(v.s >= eLen[e]){ v.s -= eLen[e]; e = next(e); }
+      v.e = e;
+      const target = Math.atan2(-uz[e], ux[e]); let diff = ((target - v.hdg + Math.PI) % tau + tau) % tau - Math.PI; v.hdg += diff*Math.min(1, dt*8);
+      const a = eFrom[e], o = eW[e]*.22, x = NX[a] + ux[e]*v.s - uz[e]*o, z = NZ[a] + uz[e]*v.s + ux[e]*o;
+      d.position.set(x, .3 + .55*sc, z); d.rotation.set(0, v.hdg, 0); d.scale.setScalar(sc); d.updateMatrix();
+      bodies.setMatrixAt(i, d.matrix); cabins.setMatrixAt(i, m.multiplyMatrices(d.matrix, up));
+      ds.position.set(x + SH.x*1.3*sc, .22, z + SH.y*1.3*sc); ds.rotation.set(0, v.hdg, 0); ds.scale.set(5.2*sc, 1, 2.6*sc); ds.updateMatrix(); shadows.setMatrixAt(i, ds.matrix);
+    }
+    bodies.instanceMatrix.needsUpdate = cabins.instanceMatrix.needsUpdate = shadows.instanceMatrix.needsUpdate = true;
+  }
+  return {group, rebalance, update, info: () => ({shown, expected})};
+}
+
+/* ---------- Tag: Zeit, Tagesgang des Verkehrs, Wetter ---------- */
+const sim = {t:5.5*3600, playing:true, speed:120, dragging:false};   // Sekunden seit 0 Uhr
+const smooth = THREE.MathUtils.smoothstep;
+const lerpKeys = (keys, h) => { for(let i=1;i<keys.length;i++){ if(h <= keys[i][0]){ const [h0,v0] = keys[i-1], [h1,v1] = keys[i]; return v0 + (v1-v0)*(h-h0)/(h1-h0); } } return keys[keys.length-1][1]; };
+// Tagesgang des Verkehrs (Demo-Vorgabe): 6 bis 8 Uhr sehr viel, bis 12 Uhr weniger, bis 17 Uhr wieder mehr, bis 19 Uhr weniger, ab 22 Uhr sehr wenig
+const TRAFFIC_KEYS = [[0,.06],[4,.05],[5,.18],[6,1],[8,1],[12,.45],[17,1],[19,.6],[22,.08],[24,.06]];
+const trafficAt = h => lerpKeys(TRAFFIC_KEYS, h);
+// Wetter (Demo-Vorgabe). Zwischen den Vorgaben gilt normales Wetter; 0 bis 6 Uhr ist nicht vorgegeben und ebenfalls normal (Annahme).
+const WEATHER = [[0,6,'normal'],[6,9,'snow'],[9,12,'normal'],[12,14,'sun'],[14,18,'rain'],[18,22,'normal'],[22,24,'snow']];
+const WX_LABEL = {normal:'Normal', sun:'Sun', rain:'Rain', snow:'Snow'};
+function weatherWeights(h){
+  const w = {sun:0, rain:0, snow:0}, F = .17;   // Übergänge dauern rund 20 Minuten
+  for(const [a,b,k] of WEATHER) if(k !== 'normal') w[k] += smooth(h, a-F, a+F) * (1 - smooth(h, b-F, b+F));
+  return {...w, normal:Math.max(0, 1 - w.sun - w.rain - w.snow)};
+}
+const nightAt = h => h < 5 ? 1 : h < 7 ? 1 - smooth(h,5,7) : h < 18 ? 0 : h < 21 ? smooth(h,18,21) : 1;   // Tag/Nacht (Annahme: ein Herbsttag)
+// Wirkung des Wetters auf die Karte: Sonne = warmer Schein und härtere Schatten, Regen = weniger gesättigt, Schnee = weniger Kontrast
+const WXP = {
+  normal:{sat:1,   con:1,   br:1,    tint:[1,1,1],        sun:2.0, hemi:1.35, sh:.18},
+  sun:   {sat:1.12,con:1.08,br:1.04, tint:[1.05,1,.92],   sun:2.7, hemi:1.1,  sh:.34},
+  rain:  {sat:.55, con:1,   br:.90,  tint:[.96,.98,1.02], sun:.8,  hemi:1.4,  sh:.05},
+  snow:  {sat:.75, con:.72, br:1.06, tint:[.98,1,1.04],   sun:1.0, hemi:1.6,  sh:.07} };
+const _bg = new THREE.Color();
+function applyEnvironment(h){
+  const w = weatherWeights(h), n = nightAt(h), keys = ['normal','sun','rain','snow'];
+  const mix = key => keys.reduce((a,k) => a + w[k]*WXP[k][key], 0), mixT = i => keys.reduce((a,k) => a + w[k]*WXP[k].tint[i], 0);
+  const br = mix('br')*(1 - .45*n);
+  WX.uSat.value = mix('sat'); WX.uCon.value = mix('con');
+  WX.uTint.value.set(mixT(0)*(1-.25*n)*br, mixT(1)*(1-.14*n)*br, mixT(2)*(1+.05*n)*br);
+  sun.intensity = mix('sun')*(1 - .9*n); hemi.intensity = mix('hemi')*(1 - .55*n); shadowCatcher.material.opacity = mix('sh')*(1 - n);
+  _bg.set(C.bg).lerp(new THREE.Color(0x3a4054), n);
+  scene.background.copy(_bg); bgPlane.material.color.copy(_bg);
+  const hex = '#' + _bg.getHexString(); washEl.style.background = hex; document.body.style.background = hex;
+  return {w, n, shadowOpacity:shadowCatcher.material.opacity};
+}
+
+/* Wetteranzeige */
+const WX_ICON = {
+  normal:'<path d="M7 18h9a4 4 0 0 0 .5-7.97A5.5 5.5 0 0 0 6 11.5 3.25 3.25 0 0 0 7 18z"/>',
+  sun:'<circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4"/>',
+  rain:'<path d="M7 14h9a4 4 0 0 0 .5-7.97A5.5 5.5 0 0 0 6 7.5 3.25 3.25 0 0 0 7 14z"/><path d="M8 17l-1 3M12 17l-1 3M16 17l-1 3"/>',
+  snow:'<path d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9M9.5 4.5L12 6.5l2.5-2M9.5 19.5L12 17.5l2.5 2"/>' };
+const wxEl = document.getElementById('wx'), wxIcon = wxEl.querySelector('svg'), wxLabel = document.getElementById('wx-label'); let wxShown = '';
+function showWeather(w){
+  const top = Object.keys(w).reduce((a,k) => w[k] > w[a] ? k : a, 'normal');
+  if(top !== wxShown){ wxShown = top; wxIcon.innerHTML = WX_ICON[top]; wxLabel.textContent = WX_LABEL[top]; }
+}
+
+/* Zeitstrahl: Abspielen/Pause, Tempo, Spuren für Wetter, Verkehr und U4 */
+const pad2 = n => String(n).padStart(2,'0');
+const clockText = t => `${pad2(Math.floor(t/3600)%24)}:${pad2(Math.floor(t/60)%60)}`;
+const tlCanvas = document.getElementById('tl-canvas'), playheadEl = document.getElementById('playhead'), clockEl = document.getElementById('clock'), playBtn = document.getElementById('play');
+const WX_COLOR = {normal:'#e9ecf4', sun:'#ffe7a3', rain:'#b8cde6', snow:'#d9e8ff'};
+const LANES = [['wx',28],['traffic',28],['u4',28]], RULER = 22, GAP = 4;
+let tlExtra = null;   // weitere Zeichenroutine (U4-Spur), wird später ergänzt
+function drawTimeline(){
+  const dpr = devicePixelRatio || 1, w = tlCanvas.clientWidth, h = tlCanvas.clientHeight; if(!w) return;
+  tlCanvas.width = w*dpr; tlCanvas.height = h*dpr; const g = tlCanvas.getContext('2d'); g.scale(dpr, dpr);
+  const X = hh => hh/24*w, laneY = i => RULER + i*(28+GAP);
+  g.font = '11px -apple-system,BlinkMacSystemFont,Segoe UI,Inter,sans-serif'; g.textBaseline = 'middle';
+  for(let hh=0; hh<=24; hh++){ const x = Math.round(X(hh)) + .5, major = hh % 3 === 0;
+    g.strokeStyle = major ? '#c9cee0' : '#e1e4ee'; g.beginPath(); g.moveTo(x, major ? 4 : 12); g.lineTo(x, h); g.stroke();
+    if(major && hh < 24){ g.fillStyle = '#6b7390'; g.fillText(pad2(hh), x+4, 9); } }
+  // Wetter
+  { const y = laneY(0);
+    for(const [a,b,k] of WEATHER){ g.fillStyle = WX_COLOR[k]; g.beginPath(); g.roundRect(X(a)+1, y, X(b)-X(a)-2, 28, 6); g.fill();
+      if(k !== 'normal'){ g.fillStyle = '#1d2236'; g.fillText(WX_LABEL[k], X(a)+8, y+14); } } }
+  // Verkehr: Höhe und Farbe zeigen den Tagesgang (Farbe nach derselben Skala wie die Auslastung)
+  { const y = laneY(1), c = new THREE.Color();
+    for(let x=0; x<w; x+=2){ const f = trafficAt(24*x/w); loadColor(f, c); g.fillStyle = '#' + c.getHexString(); const bh = 3 + f*25; g.fillRect(x, y + 28 - bh, 2, bh); } }
+  if(tlExtra) tlExtra(g, X, laneY(2), w);
+}
+function setPlaying(p){ sim.playing = p; playBtn.innerHTML = p ? '<svg viewBox="0 0 24 24"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>' : '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>'; playBtn.setAttribute('aria-label', p ? 'Pause' : 'Play'); }
+playBtn.addEventListener('click', () => setPlaying(!sim.playing)); setPlaying(true);
+document.querySelectorAll('#speed button').forEach(b => { if(+b.dataset.s === sim.speed) b.classList.add('on'); b.addEventListener('click', () => { sim.speed = +b.dataset.s; document.querySelectorAll('#speed button').forEach(x => x.classList.toggle('on', x === b)); }); });
+const trackEl = document.getElementById('tl-track');
+const seek = e => { const r = trackEl.getBoundingClientRect(); sim.t = THREE.MathUtils.clamp((e.clientX - r.left)/r.width, 0, .9999)*86400; };
+trackEl.addEventListener('pointerdown', e => { sim.dragging = true; trackEl.setPointerCapture(e.pointerId); seek(e); });
+trackEl.addEventListener('pointermove', e => { if(sim.dragging) seek(e); });
+trackEl.addEventListener('pointerup', () => sim.dragging = false); trackEl.addEventListener('pointercancel', () => sim.dragging = false);
+addEventListener('keydown', e => { if(e.code === 'Space' && !e.ctrlKey && !e.metaKey && !e.altKey){ e.preventDefault(); setPlaying(!sim.playing); } });
+const tlEl = document.getElementById('timeline');
+const layoutTimeline = () => { document.documentElement.style.setProperty('--tl', tlEl.offsetHeight + 'px'); drawTimeline(); };
+addEventListener('resize', layoutTimeline);
+
+/* ---------- Steuerung ---------- */
+const controls = new OrbitControls(cam, renderer.domElement);
+controls.target.set(0,0,0);
+cam.position.set(-250,195,250);
+// Startzoom: so, dass alle vier Ecken des Gebiets ins Bild passen (aus der echten Projektion, nicht geschätzt)
+cam.zoom = 1; cam.updateProjectionMatrix(); controls.update(); cam.updateMatrixWorld();
+let reach = 0; const corner = new THREE.Vector3();
+for(const sx of [-1,1]) for(const sz of [-1,1]){ corner.set(sx*HX, 0, sz*HZ).project(cam); reach = Math.max(reach, Math.abs(corner.x), Math.abs(corner.y)); }
+const fitZoom = .92/reach;
+cam.zoom = fitZoom; cam.updateProjectionMatrix();
+Object.assign(controls, {enableDamping:true, dampingFactor:.08, screenSpacePanning:false,
+  minPolarAngle:.6, maxPolarAngle:1.2, minZoom:fitZoom*.35, maxZoom:8});
+controls.addEventListener('change', () => {
+  const t = controls.target;
+  const dx = THREE.MathUtils.clamp(t.x,-(HX+4000),HX+4000)-t.x, dz = THREE.MathUtils.clamp(t.z,-(HZ+4000),HZ+4000)-t.z;
+  if(dx||dz){ t.x+=dx; t.z+=dz; cam.position.x+=dx; cam.position.z+=dz; }
+});
+
+/* ---------- POIs: Punkt am Boden, Namensschild nur wo Platz ist (oder beim Darüberfahren) ---------- */
+const poiHost = document.getElementById('pois');
+const pois = CITY.pois.map(p => {
+  const el = document.createElement('div'); el.className = 'poi';
+  el.innerHTML = `<div class="chip">${p.n}</div><div class="dot" title="${p.n}"></div>`;
+  const poi = {p, el, pos:new THREE.Vector3(p.x, 0, p.z), hover:false, w:p.n.length*7.6+28};
+  el.querySelector('.dot').addEventListener('mouseenter', () => poi.hover = true);
+  el.querySelector('.dot').addEventListener('mouseleave', () => poi.hover = false);
+  poiHost.appendChild(el); return poi;
+});
+/* ---------- Linie im Mini-Metro-Stil: Stationen bleiben an ihrem Ort, dazwischen nur 0°/45°/90° ---------- */
+const route = (() => {
+  const pts = [{x:CITY.pois[0].x, z:CITY.pois[0].z}];
+  let heading = null;  // Richtung des letzten Stücks, damit die Linie möglichst geradeaus bleibt
+  const unit = (a,b) => { const dx=b.x-a.x, dz=b.z-a.z, l=Math.hypot(dx,dz)||1; return {x:dx/l, z:dz/l}; };
+  for(let i=1;i<CITY.pois.length;i++){
+    const a = pts[pts.length-1], b = CITY.pois[i];
+    const dx=b.x-a.x, dz=b.z-a.z, sx=Math.sign(dx), sz=Math.sign(dz), d=Math.min(Math.abs(dx),Math.abs(dz));
+    const diag = {x:a.x+sx*d, z:a.z+sz*d}, straight = {x:Math.abs(dx)>Math.abs(dz) ? a.x+dx-sx*d : a.x, z:Math.abs(dx)>Math.abs(dz) ? a.z : a.z+dz-sz*d};
+    const opts = d < 1 ? [[{x:b.x,z:b.z}]] : [[diag, {x:b.x,z:b.z}], [straight, {x:b.x,z:b.z}]];
+    let best = opts[0];
+    if(heading && opts.length > 1){ const score = o => { const u = unit(a, o[0]); return u.x*heading.x + u.z*heading.z; }; best = score(opts[1]) > score(opts[0]) ? opts[1] : opts[0]; }
+    for(const p of best){ const prev = pts[pts.length-1]; if(Math.hypot(p.x-prev.x, p.z-prev.z) > .5){ heading = unit(prev, p); pts.push({x:p.x, z:p.z}); } }
+  }
+  return pts.map(p => new THREE.Vector3(p.x, 0, p.z));
+})();
+const SVG = 'http://www.w3.org/2000/svg', svg = document.getElementById('line');
+const mk = (tag, attrs) => { const e = document.createElementNS(SVG, tag); for(const k in attrs) e.setAttribute(k, attrs[k]); svg.appendChild(e); return e; };
+const lineStyle = {fill:'none', 'stroke-linejoin':'round', 'stroke-linecap':'round'};
+const casing = mk('polyline', {...lineStyle, stroke:'#ffffff', 'stroke-opacity':.9});
+const stroke = mk('polyline', {...lineStyle, stroke:'#1f2bff'});
+const capA = mk('line', {stroke:'#1f2bff', 'stroke-linecap':'butt'}), capB = mk('line', {stroke:'#1f2bff', 'stroke-linecap':'butt'});
+const sp = route.map(() => ({x:0, y:0}));
+function placeLine(){
+  const w = innerWidth, h = innerHeight;
+  route.forEach((p,i) => { v3.copy(p).project(cam); sp[i].x = (v3.x*.5+.5)*w; sp[i].y = (-v3.y*.5+.5)*h; });
+  const k = THREE.MathUtils.smoothstep(cam.zoom, fitZoom, .6), lw = 6 + 9*k;
+  const pts = sp.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  casing.setAttribute('points', pts); casing.setAttribute('stroke-width', lw + 6);
+  stroke.setAttribute('points', pts); stroke.setAttribute('stroke-width', lw);
+  // Abschlussbalken quer zur Linie an beiden Enden
+  const cap = (el, a, b) => { const dx=a.x-b.x, dy=a.y-b.y, l=Math.hypot(dx,dy)||1, nx=-dy/l*(lw*1.1+8), ny=dx/l*(lw*1.1+8);
+    el.setAttribute('x1', a.x+nx); el.setAttribute('y1', a.y+ny); el.setAttribute('x2', a.x-nx); el.setAttribute('y2', a.y-ny); el.setAttribute('stroke-width', Math.max(4, lw*.45)); };
+  cap(capA, sp[0], sp[1]); cap(capB, sp[sp.length-1], sp[sp.length-2]);
+}
+
+const v3 = new THREE.Vector3();
+function placePois(){
+  const w = innerWidth, h = innerHeight, shown = [];
+  for(const o of pois){
+    v3.copy(o.pos).project(cam);
+    o.sx = (v3.x*.5+.5)*w; o.sy = (-v3.y*.5+.5)*h;
+    o.el.style.transform = `translate(${o.sx}px,${o.sy}px)`;
+  }
+  // Schilder in Reihenfolge der Linie vergeben, solange sie sich nicht überlappen
+  for(const o of pois){
+    const box = {x0:o.sx-o.w/2, x1:o.sx+o.w/2, y0:o.sy-52, y1:o.sy-20};
+    const free = !shown.some(b => box.x0 < b.x1 && box.x1 > b.x0 && box.y0 < b.y1 && box.y1 > b.y0);
+    const on = o.hover || (free && o.sx > -50 && o.sx < w+50 && o.sy > 0 && o.sy < h+50);
+    if(on && free) shown.push(box);
+    o.el.classList.toggle('show', on);
+    o.el.style.zIndex = o.hover ? 2 : 1;
+  }
+}
+
+/* ---------- U4: Fahrplan (Demo) und Wagen im Mini-Metro-Stil ---------- */
+// Alles hier ist eine Annahme für die Demo: Takt, Fahrzeiten und Auslastung der Züge sind nicht gemessen.
+const routeS = [0]; for(let i=1;i<route.length;i++) routeS.push(routeS[i-1] + route[i].distanceTo(route[i-1]));
+const LINE_LEN = routeS[routeS.length-1];
+const stnS = CITY.pois.map(p => routeS[Math.max(0, route.findIndex(v => Math.hypot(v.x-p.x, v.z-p.z) < 1))]);   // Lage der Haltestellen entlang der Linie
+const NS = stnS.length, DWELL = 30, V_RUN = 12, PENALTY = 25;                                                       // Haltezeit s, Reisegeschwindigkeit m/s, Anfahren/Bremsen s
+const runT = []; for(let i=0;i<NS-1;i++) runT.push((stnS[i+1]-stnS[i])/V_RUN + PENALTY);
+function tripTimes(dirA){   // Ankunft und Abfahrt je Haltestelle, relativ zum Start. Richtung A: Billstedt → Elbbrücken
+  const idx = [...Array(NS).keys()]; if(!dirA) idx.reverse();
+  const arr = [0], dep = [0];
+  for(let k=1;k<NS;k++){ arr[k] = dep[k-1] + runT[Math.min(idx[k-1], idx[k])]; dep[k] = arr[k] + DWELL; }
+  return {idx, arr, dep, total:dep[NS-1]};
+}
+const TT = {A:tripTimes(true), B:tripTimes(false)};
+const HEADWAY = [[0,20],[5,10],[6,5],[9,10],[15,5],[19,10],[22,20]];   // ab Stunde: Takt in Minuten (Annahme)
+const hwAt = h => { let m = 20; for(const [h0,v] of HEADWAY) if(h >= h0) m = v; return m; };
+const TRIPS = [];
+for(const [dir, offset] of [['A',0],['B',150]]){ let t = -3600 + offset, i = 0; while(t < 86400){ TRIPS.push({id:dir+(i++), dir, t0:t}); t += hwAt((((t/3600) % 24) + 24) % 24)*60; } }
+const MORNING = h => smooth(h,5.5,7)*(1-smooth(h,9,10.5)), EVENING = h => smooth(h,15,16.5)*(1-smooth(h,19,20.5));
+function trainLoad(t, x, dir){   // Auslastung eines Zuges: Tagesgang × Lage auf der Linie (Mitte voller) × Richtung (morgens stadteinwärts, abends stadtauswärts)
+  const h = ((t/3600) % 24 + 24) % 24, spatial = .5 + .5*Math.exp(-(((x-.72)/.30)**2));
+  const dirF = dir === 'A' ? 1 + .22*MORNING(h) - .22*EVENING(h) : 1 - .25*MORNING(h) + .22*EVENING(h);
+  return trafficAt(h)*spatial*dirF*1.15;
+}
+for(const tr of TRIPS) tr.load = trainLoad(tr.t0 + TT[tr.dir].total*.55, .7, tr.dir);
+const ease = p => .5 - .5*Math.cos(Math.PI*p);
+function trainStates(t){
+  const res = [];
+  for(const tr of TRIPS){
+    const T = TT[tr.dir], tau = t - tr.t0; if(tau < 0 || tau > T.total) continue;
+    for(let k=0;k<NS;k++){
+      if(tau <= T.dep[k]){ res.push({tr, s:stnS[T.idx[k]], moving:false}); break; }
+      if(k < NS-1 && tau < T.arr[k+1]){ const p = (tau-T.dep[k])/(T.arr[k+1]-T.dep[k]); res.push({tr, s:stnS[T.idx[k]] + (stnS[T.idx[k+1]]-stnS[T.idx[k]])*ease(p), moving:true}); break; }
+    }
+  }
+  return res;
+}
+function routeAt(s, out){
+  s = THREE.MathUtils.clamp(s, 0, LINE_LEN); let lo = 0, hi = routeS.length-1;
+  while(lo < hi-1){ const m = (lo+hi) >> 1; if(routeS[m] <= s) lo = m; else hi = m; }
+  const l = routeS[hi]-routeS[lo] || 1; return out.copy(route[lo]).lerp(route[hi], (s-routeS[lo])/l);
+}
+const trainsG = mk('g', {}), trainEls = new Map(), _p = new THREE.Vector3(), _q = new THREE.Vector3(), _c = new THREE.Color();
+const toScreen = (v, o) => { _q.copy(v).project(cam); o.x = (_q.x*.5+.5)*innerWidth; o.y = (-_q.y*.5+.5)*innerHeight; return o; };
+const sa = {x:0,y:0}, sb = {x:0,y:0};
+function placeTrains(t){
+  const seen = new Set(), mpp = (2*FRUSTUM*aspect/cam.zoom)/innerWidth;
+  const lw = 6 + 9*THREE.MathUtils.smoothstep(cam.zoom, fitZoom, .6), wid = lw*1.5 + 2, len = wid*1.9, dist = (len+3)*mpp, eps = Math.max(30, mpp*8);
+  const labels = cam.zoom > fitZoom*2.2;
+  for(const st of trainStates(t)){
+    const tr = st.tr, dirA = tr.dir === 'A', load = trainLoad(t, st.s/LINE_LEN, tr.dir), color = '#' + loadColor(load, _c).getHexString(); seen.add(tr.id);
+    let el = trainEls.get(tr.id);
+    if(!el){ const g = document.createElementNS(SVG, 'g'); el = {g, w:[0,1,2].map(() => { const r = document.createElementNS(SVG, 'rect'); r.setAttribute('stroke', '#ffffff'); r.setAttribute('stroke-width', 2); g.appendChild(r); return r; }), tx:document.createElementNS(SVG, 'text')};
+      el.tx.setAttribute('font-size', 11); el.tx.setAttribute('font-weight', 600); el.tx.setAttribute('fill', '#1d2236'); el.tx.setAttribute('stroke', '#ffffff'); el.tx.setAttribute('stroke-width', 3); el.tx.setAttribute('paint-order', 'stroke'); el.tx.setAttribute('text-anchor', 'middle');
+      g.appendChild(el.tx); trainsG.appendChild(g); trainEls.set(tr.id, el); }
+    for(let j=0;j<3;j++){
+      const sj = dirA ? st.s - j*dist : st.s + j*dist;
+      toScreen(routeAt(sj, _p), sa); toScreen(routeAt(sj + eps, _p), sb);
+      const ang = Math.atan2(sb.y-sa.y, sb.x-sa.x), side = (dirA ? 1 : -1)*wid*.58, cx = sa.x - Math.sin(ang)*side, cy = sa.y + Math.cos(ang)*side, r = el.w[j];
+      r.setAttribute('x', -len/2); r.setAttribute('y', -wid/2); r.setAttribute('width', len); r.setAttribute('height', wid); r.setAttribute('rx', wid*.3);
+      r.setAttribute('fill', color); r.setAttribute('transform', `translate(${cx.toFixed(1)} ${cy.toFixed(1)}) rotate(${(ang*180/Math.PI).toFixed(1)})`);
+      if(j === 0){ el.tx.setAttribute('x', cx - Math.sin(ang)*side*1.9); el.tx.setAttribute('y', cy + Math.cos(ang)*side*1.9 + 4); el.tx.textContent = `${Math.round(load*100)} %`; el.tx.style.display = labels ? '' : 'none'; }
+    }
+  }
+  for(const [id, el] of trainEls) if(!seen.has(id)){ el.g.remove(); trainEls.delete(id); }
+}
+// U4-Spur im Zeitstrahl: jede Abfahrt als Strich, Farbe = Auslastung des Zuges, oben Richtung A, unten Richtung B
+tlExtra = (g, X, y, w) => {
+  const c = new THREE.Color();
+  for(const tr of TRIPS){ if(tr.t0 < 0 || tr.t0 >= 86400) continue; loadColor(tr.load, c); g.fillStyle = '#' + c.getHexString(); g.fillRect(Math.round(X(tr.t0/3600)), y + (tr.dir === 'A' ? 1 : 15), 2, 12); }
+};
+
+/* Startansicht per Adresszeile: ?at=Haltestelle&zoom=3&t=13:00&pause */
+{
+  const q = new URLSearchParams(location.search), p = CITY.pois.find(x => x.n === q.get('at'));
+  if(p){ controls.target.set(p.x, 0, p.z); cam.position.set(p.x-250, 195, p.z+250); }
+  if(q.get('zoom')){ cam.zoom = +q.get('zoom'); cam.updateProjectionMatrix(); }
+  if(q.get('t')){ const [h, m] = q.get('t').split(':').map(Number); sim.t = ((h*60) + (m || 0))*60; }
+  if(q.has('pause')) setPlaying(false);
+}
+await build();
+const loadingEl = document.getElementById('loading');
+const model = await buildTrafficModel(p => loadingEl.textContent = `Calculating traffic … ${Math.round(p*100)} %`);
+const overlay = makeLoadOverlay(model), cars = makeCars(model);
+loadingEl.remove();
+layoutTimeline();
+
+/* Schalter für Verkehr und Linien, dazu die Legende der Farbskala */
+const show = {traffic:true, lines:true};
+const legendEl = document.getElementById('legend'), carInfoEl = document.getElementById('carinfo');
+document.getElementById('bar').style.background = 'linear-gradient(90deg,' + LOAD_STOPS.map(([u,c]) => '#' + c.toString(16).padStart(6,'0') + ' ' + (u/LOAD_MAX*100).toFixed(1) + '%').join(',') + ')';
+document.getElementById('ticks').textContent = 'cold below 10 % · optimal · full from 65 % · alarm from 100 % · utilization × time of day · wagon color = train load';
+function applyToggles(){
+  document.querySelectorAll('.tg').forEach(b => { const on = show[b.dataset.k]; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); });
+  legendEl.style.display = show.traffic ? '' : 'none';
+  svg.style.display = poiHost.style.display = show.lines ? '' : 'none';
+}
+document.querySelectorAll('.tg').forEach(b => b.addEventListener('click', () => { show[b.dataset.k] = !show[b.dataset.k]; applyToggles(); }));
+addEventListener('keydown', e => { if(e.ctrlKey || e.metaKey || e.altKey) return; const k = {v:'traffic', l:'lines'}[e.key.toLowerCase()]; if(k){ show[k] = !show[k]; applyToggles(); } });
+applyToggles();
+if(CITY.meta.gaps && CITY.meta.gaps.length) document.getElementById('credit').textContent += ` · ${CITY.meta.gaps.length} tiles without data`;
+
+const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
+let last = performance.now(), lastTiles = 0, lastCars = 0;
+renderer.setAnimationLoop(now => {
+  const dt = Math.min((now-last)/1000, .05); last = now;
+  // Zeit, Tagesgang und Wetter
+  if(sim.playing && !sim.dragging) sim.t = (sim.t + dt*sim.speed) % 86400;
+  const hNow = sim.t/3600, env = applyEnvironment(hNow), f = trafficAt(hNow);
+  clockEl.textContent = clockText(sim.t); playheadEl.style.transform = `translateX(${trackEl.clientWidth*sim.t/86400}px)`; showWeather(env.w);
+  controls.update();
+  // weit draußen nur die Karte, nah dran wächst die Stadt aus ihr heraus (Adaptive Experience, kein sichtbarer Bereichsrand)
+  const k = THREE.MathUtils.smoothstep(cam.zoom, .12, .45);
+  tall.forEach(m => { m.visible = k > .02; m.scale.y = Math.max(k, .001); });
+  // Verkehr: weit draußen Farbe der Auslastung, nah dran Fahrzeuge in passender Zahl
+  overlay.visible = show.traffic;
+  if(show.traffic){
+    overlay.material.uniforms.uMpp.value = (2*FRUSTUM*aspect/cam.zoom)/innerWidth;
+    overlay.material.uniforms.uOpacity.value = .35 + .65*(1 - THREE.MathUtils.smoothstep(cam.zoom, .25, .7));
+    overlay.material.uniforms.uScale.value = f;
+  }
+  const carsOn = show.traffic && cam.zoom > .2;
+  cars.group.visible = carsOn;
+  if(carsOn){
+    if(now - lastCars > 400){
+      lastCars = now; cars.rebalance(controls.target.x, controls.target.z, Math.min(2600, FRUSTUM/cam.zoom*1.6), f);
+      const i = cars.info(); carInfoEl.textContent = `Vehicles in view: ${i.shown.toLocaleString('en-GB')}` + (i.expected > i.shown + 5 ? ` (display capped, expected ${Math.round(i.expected).toLocaleString('en-GB')})` : '');
+    }
+    cars.update(calm ? 0 : dt, THREE.MathUtils.clamp(1.6/cam.zoom, 1, 4), f, Math.min(.4, env.shadowOpacity*1.6));
+  } else if(show.traffic) carInfoEl.textContent = 'Vehicles appear when you zoom in';
+  const fg = THREE.MathUtils.smoothstep(cam.zoom, .08, .25);   // eigener Untergrund blendet über der Karte ein
+  flatMats.forEach(m => m.opacity = fg); flatMeshes.forEach(m => m.visible = fg > .01);
+  washEl.style.opacity = .45*(1-k);  // weit draußen tritt die Linie vor der Karte hervor
+  if(now - lastTiles > 300){ lastTiles = now; updateTiles(); }
+  updateSun(controls.target); placeLine(); placeTrains(sim.t); placePois(); renderer.render(scene, cam);
+});
+</script>
+</body>
+</html>
