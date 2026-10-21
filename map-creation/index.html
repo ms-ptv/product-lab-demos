@@ -169,7 +169,7 @@ window.CITY_READY = (async () => {
     window.MODEL_REC = rec;   // für die Hintergrund-Berechnung der 3D-Karte (rec.build)
     return rec.city;
   }
-  await new Promise((ok, fail) => { const s = document.createElement('script'); s.src = 'hamburg-data.js'; s.onload = ok; s.onerror = () => fail(new Error('Demo data not found.')); document.head.appendChild(s); });
+  await new Promise((ok, fail) => { const s = document.createElement('script'); s.src = '../data/hamburg-data.js'; s.onload = ok; s.onerror = () => fail(new Error('Demo data not found.')); document.head.appendChild(s); });
   window.CITY.meta.name = window.CITY.meta.name || 'Hamburg';
   return window.CITY;
 })();

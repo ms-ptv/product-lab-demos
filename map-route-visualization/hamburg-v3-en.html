@@ -90,7 +90,11 @@
   <div id="carinfo"></div>
 </div>
 
-<script src="hamburg-data.js"></script>
+<script src="../data/hamburg-data.js"></script>
+<script>
+// The shared data holds a whole network; this single-line demo keeps showing the U4 with its own stops and area.
+(function(){ var C = window.CITY; if(C && C.legacy){ var L = C.legacy; C.pois = L.pois; C.meta = Object.assign({}, C.meta, {hx: L.hx, hz: L.hz, gaps: L.gaps, line: 'U4'}); delete C.lines; delete C.legacy; } })();
+</script>
 <script type="importmap">
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",

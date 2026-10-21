@@ -12,6 +12,10 @@ Everything in this repo is public. Only add what is meant to be shown.
 | Route visualization, Hamburg U4 | `map-route-visualization/` | https://ms-ptv.github.io/product-lab-demos/map-route-visualization/?t=3:00&pause |
 | Network timeline and lenses, Hamburg: 16 lines of 4 transport systems (passenger counts simulated) | `map-creation/` | https://ms-ptv.github.io/product-lab-demos/map-creation/?t=8:00 |
 
+## Shared data
+
+`data/hamburg-data.js` is the one Hamburg data file for the demos: the 3D layers of the U4 corridor, 16 lines of a PTV Visum model (metro, rail, ferry, bus) with their timetables, and a `legacy` block (the original U4 stops and area) for the older single-line demo. Both `map-creation/` and `map-route-visualization/` load it from `../data/`. It is built by `tools/build_demo_data.py` in the private `product-lab`.
+
 ## Adding a demo
 
 1. Create a folder at the repo root, named `<area>-<topic>` (e.g. `timeline-rhythms`).
