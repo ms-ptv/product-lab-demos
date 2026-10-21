@@ -1072,8 +1072,8 @@ const audible = L => !filt.removed.has(lineKey(L)) && (filt.solo.size ? filt.sol
 function layoutRows(){ let y = 0; rowTop = laneLines.map(L => { const t = y; y += heightOf(L); return t; }); rowTotal = y; }
 const rowAt = y => { let lo = 0, hi = laneLines.length - 1; if(hi < 0) return -1; while(lo < hi){ const m = (lo + hi + 1) >> 1; if(rowTop[m] <= y) lo = m; else hi = m - 1; } return lo; };
 function saveFilt(){ try { localStorage.setItem(FKEY, JSON.stringify({modes: filt.modes, muted: [...filt.muted], solo: [...filt.solo], removed: [...filt.removed], alpha: filt.alpha, heights: filt.heights, onlyIssues: filt.onlyIssues})); } catch(e){ /* nur Komfort */ } }
-// Takt (Fahrt) = Abfahrt am ersten Halt; die Breite ist die Standzeit dort: bei einem Fahrplan Abfahrt minus Ankunft, sonst die Standardzeit der Demo; mindestens 20 s wie in der Fahrt selbst
-const tripDwell = tr => { if(tr.dw == null){ const S = tr.line.S && tr.line.S[tr.dir], i = tr.T.idx[0]; tr.dw = S && S.arr && S.dep ? Math.max(20, S.dep[i] - S.arr[i]) : DWELL; } return tr.dw; };
+// Takt (Fahrt) = Abfahrt am ersten Halt; die Breite ist die Standzeit dort: bei einem Fahrplan Abfahrt minus Ankunft, sonst die Standardzeit der Demo. Viele Fahrpläne haben Ankunft = Abfahrt (0 s); der Strich bleibt dann mindestens 2 Pixel breit
+const tripDwell = tr => { if(tr.dw == null){ const S = tr.line.S && tr.line.S[tr.dir], i = tr.T.idx[0]; tr.dw = S && S.arr && S.dep ? Math.max(0, S.dep[i] - S.arr[i]) : DWELL; } return tr.dw; };
 const stopOfTrip = tr => tr.line.st[tr.T.idx[0]];
 const loadAtStop = tr => tr.apc ? tr.apc.lf*(.65 + .35*Math.exp(-(((tr.line.stnS[tr.T.idx[0]]/(tr.line.LEN || 1) - tr.line.c)/.3)**2))) : tr.load;
 const tickBox = (tr, w) => { const xe = tvx(tr.t0/3600, w), bw = Math.max(2, Math.round(tripDwell(tr)/3600*w/(tv.b - tv.a))); return {xl: Math.round(xe) - bw, bw}; };
