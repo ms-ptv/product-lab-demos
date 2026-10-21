@@ -10,7 +10,7 @@ Everything in this repo is public. Only add what is meant to be shown.
 | Demo | Folder | Link |
 |------|--------|------|
 | Route visualization, Hamburg U4 | `map-route-visualization/` | https://ms-ptv.github.io/product-lab-demos/map-route-visualization/?t=3:00&pause |
-| Network timeline and lenses, Hamburg U4 (passenger counts simulated) | `map-creation/` | https://ms-ptv.github.io/product-lab-demos/map-creation/?t=8:00 |
+| Network timeline and lenses, Hamburg: 16 lines of 4 transport systems (passenger counts simulated) | `map-creation/` | https://ms-ptv.github.io/product-lab-demos/map-creation/?t=8:00 |
 
 ## Adding a demo
 
