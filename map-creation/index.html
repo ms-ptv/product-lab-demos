@@ -1,0 +1,1547 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Route visualization</title>
+<style>
+  :root { --bg:#e9ecf3; --ink:#1d2236; --muted:#6b7390; --accent:#1f2bff; }
+  html, body { margin:0; height:100%; background:var(--bg); overflow:hidden;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif; color:var(--ink); }
+  canvas { display:block; cursor:grab; }
+  canvas:active { cursor:grabbing; }
+  .pill { position:fixed; padding:8px 12px; border-radius:10px; font-size:12px; color:var(--muted);
+    background:rgba(255,253,249,.88); box-shadow:0 4px 16px rgba(31,43,120,.08); }
+  #hud { position:fixed; left:12px; top:12px; display:flex; flex-direction:column; align-items:flex-start; gap:8px; max-width:calc(100vw - 24px); }
+  #bench { display:flex; flex-wrap:wrap; align-items:center; gap:2px; }
+  #bench, #lenses { padding:4px; border-radius:14px; background:rgba(255,253,249,.94); box-shadow:0 4px 16px rgba(31,43,120,.12), 0 1px 2px rgba(31,43,120,.08); }
+  #tools { display:flex; flex-wrap:wrap; align-items:center; gap:2px; }
+  #bench .sep { width:1px; height:22px; margin:0 4px; background:#dfe2ee; }
+  /* Ein Tastensystem für alles: 40 px Raster (Fitts: große, gleich große Ziele), 10 px Radius, gleiche Zustände überall */
+  :root { --btn:40px; --tint:#e9ebff; --hover:#eef0f6; }
+  .tg, .slot, .sp { position:relative; flex:none; width:var(--btn); height:var(--btn); padding:0; border:0; border-radius:10px; background:transparent; color:#8b92ad; cursor:pointer; display:grid; place-items:center; text-decoration:none; font:inherit; }
+  .tg[hidden] { display:none; }
+  .tg svg { width:22px; height:22px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+  .sp svg { fill:currentColor; }
+  .tg:hover, .slot:hover, .sp:hover { background:var(--hover); } .tg.on, .slot.on, .sp.on { color:var(--accent); background:var(--tint); }
+  .tg:focus-visible, .slot:focus-visible, .sp:focus-visible, .menu button:focus-visible, .lw .x:focus-visible { outline:3px solid #9aa2ff; outline-offset:1px; }
+  .tg kbd { position:absolute; right:4px; bottom:2px; font:600 9px ui-monospace,Menlo,monospace; color:inherit; opacity:.5; pointer-events:none; }
+  .tg.forced::after { content:""; position:absolute; right:6px; top:6px; width:7px; height:7px; border-radius:50%; background:var(--accent); }
+  #lenses { display:flex; gap:2px; }
+  .lw { position:relative; flex:none; }
+  .slot b { font:700 17px ui-monospace,Menlo,monospace; }
+  .lw .x { position:absolute; right:-2px; top:-2px; width:18px; height:18px; padding:0; border:0; border-radius:50%; background:#fff; color:var(--muted); box-shadow:0 1px 4px rgba(31,43,120,.3); cursor:pointer; display:grid; place-items:center; opacity:0; pointer-events:none; }
+  .lw .x svg { width:10px; height:10px; fill:none; stroke:currentColor; stroke-width:2.4; stroke-linecap:round; }
+  .lw:hover .x, .lw:focus-within .x { opacity:1; pointer-events:auto; } .lw .x:hover { background:#d6453d; color:#fff; }
+  .menu input[type=text], .menu input[type=date] { margin:2px 6px; padding:6px 8px; border:1px solid #c9cee0; border-radius:8px; font:600 13px inherit; color:var(--ink); background:#fff; }
+  .menu .grp { height:1px; margin:4px 6px; background:#e3e6f1; } .menu button.sub { padding-left:20px; font-weight:500; }
+  .menu { position:fixed; z-index:40; min-width:190px; padding:4px; border-radius:12px; background:rgba(255,253,249,.98); box-shadow:0 8px 24px rgba(31,43,120,.2), 0 1px 2px rgba(31,43,120,.1); display:flex; flex-direction:column; }
+  .menu[hidden] { display:none; } .menu button { display:flex; align-items:center; gap:10px; height:36px; padding:0 10px; border:0; border-radius:8px; background:transparent; color:var(--ink); font:600 13px inherit; cursor:pointer; text-align:left; }
+  .menu button svg { width:20px; height:20px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; flex:none; } .menu button:hover:not(:disabled) { background:#eef0f6; } .menu button:disabled { color:#a3a9c0; cursor:default; }
+  .menu button[aria-checked="true"] { color:var(--accent); } .menu button small { margin-left:auto; font-weight:400; color:var(--muted); font-size:11px; } .menu button[aria-checked="true"]::after { content:"✓"; margin-left:auto; }
+  #rpanel { position:fixed; right:0; top:12px; bottom:calc(var(--tl, 150px) + 12px); width:var(--rpw, 320px); max-width:60vw; display:flex; flex-direction:column; border-radius:18px 0 0 18px; background:rgba(255,253,249,.96); box-shadow:-8px 0 24px rgba(31,43,120,.14), -1px 0 2px rgba(31,43,120,.10); }
+  #rpanel[hidden] { display:none; }
+  #rp-grip { position:absolute; left:0; top:0; bottom:0; width:12px; cursor:ew-resize; touch-action:none; border-radius:18px 0 0 18px; display:grid; place-items:center; } #rp-grip::before { content:""; width:4px; height:40px; border-radius:2px; background:#c3c8dc; } #rp-grip:hover::before, #rp-grip:focus-visible::before { background:var(--accent); } #rp-grip:focus-visible { outline:3px solid #9aa2ff; outline-offset:-3px; }
+  #rp-head { display:flex; align-items:center; padding:12px 14px 6px 22px; font-weight:600; font-size:14px; } #rp-body { flex:1; overflow:auto; padding:4px 14px 14px 22px; color:var(--muted); font-size:13px; line-height:1.4; }
+  #timeline { box-sizing:border-box; position:fixed; left:0; right:0; bottom:0; display:flex; flex-direction:column; max-height:92vh; padding:0 16px max(12px, env(safe-area-inset-bottom)); border-radius:18px 18px 0 0; background:rgba(255,253,249,.96); box-shadow:0 -8px 24px rgba(31,43,120,.14), 0 -1px 2px rgba(31,43,120,.10); }
+  #timeline.sized { height:min(var(--tlH), 92vh); }
+  #timeline > * { flex:none; }
+  #tl-head { display:flex; align-items:center; gap:14px; margin-bottom:8px; }
+  #clock { font:600 20px ui-monospace,Menlo,monospace; letter-spacing:.02em; min-width:62px; }
+  #speed { display:flex; gap:2px; }
+  #tl-body { display:flex; gap:10px; }
+  :root { --lw:320px; }
+  @media (max-width:900px) { :root { --lw:250px; } .vol { width:44px; } }
+  #tl-labels { width:var(--lw); flex:none; padding-top:26px; font-size:12px; color:var(--muted); }
+  #tl-labels span { display:block; height:28px; line-height:28px; margin-bottom:4px; }
+  #tl-track { position:relative; flex:1; height:62px; cursor:col-resize; touch-action:none; }
+  #tl-canvas { position:absolute; inset:0; width:100%; height:100%; }
+  #tl-modes { display:flex; gap:2px; flex-wrap:wrap; align-items:center; } #tl-zoom { margin-left:auto; display:flex; gap:2px; } .tg:disabled { opacity:.35; cursor:default; } .tg:disabled:hover { background:transparent; }
+  .tg .bd { position:absolute; right:3px; top:3px; min-width:14px; height:14px; padding:0 3px; box-sizing:border-box; border-radius:7px; background:var(--accent); color:#fff; font:700 9px/14px inherit; text-align:center; pointer-events:none; }
+  .tg.warn.on { background:#fde8e6; color:#d6453d; } .tg.warn .bd { background:#d6453d; }
+  #timeline.nt #tl-track { height:34px; } #timeline.nt #tl-labels span { display:none; }
+  #tl-grip { height:22px; margin:0 -16px 2px; cursor:ns-resize; touch-action:none; display:grid; place-items:center; border-radius:18px 18px 0 0; } #tl-grip::before { content:""; width:48px; height:5px; border-radius:3px; background:#c3c8dc; } #tl-grip:hover::before, #tl-grip:focus-visible::before { background:var(--accent); } #tl-grip:focus-visible { outline:3px solid #9aa2ff; outline-offset:-3px; }
+  #tl-lines { margin-top:6px; max-height:26vh; overflow:auto; border-top:1px solid #e1e4ee; scroll-snap-type:y mandatory; }
+  #timeline.sized #tl-lines { flex:1 1 0; min-height:0; max-height:none; }
+  #tl-tip { position:fixed; z-index:30; max-width:300px; padding:8px 10px; border-radius:10px; background:var(--ink); color:#fff; font-size:12px; line-height:1.35; pointer-events:none; box-shadow:0 6px 18px rgba(0,0,0,.25); } #tl-tip[hidden] { display:none; } #tl-tip b { display:block; } #tl-tip small { opacity:.8; display:block; margin-top:2px; }
+  #tl-lines[hidden] { display:none; }
+  .lnwrap { display:flex; gap:10px; }
+  #ln-labels { width:var(--lw); flex:none; }
+  /* Spurkopf nach dem Vorbild von Soundtrap: Karte mit Farbbalken, Fahrzeug-Symbol, Titel, Stumm, Solo, Transparenz, Menü; unten ein Griff für die Höhe */
+  .trk { scroll-snap-align:start; cursor:pointer; box-sizing:border-box; padding:2px 0; position:relative; font-size:12px; color:var(--ink); }
+  .tc { position:relative; display:flex; align-items:flex-start; gap:8px; height:100%; box-sizing:border-box; padding:1px 6px 0 14px; border-radius:10px; background:#fff; border:1px solid #e3e6f1; overflow:hidden; }
+  .trk:hover .tc { border-color:#c3c8dc; } .trk.sel .tc { box-shadow:0 0 0 2px var(--accent); border-color:var(--accent); }
+  .tc .bar { position:absolute; left:0; top:0; bottom:0; width:6px; }
+  .vic { flex:none; width:28px; height:28px; margin-top:3px; border-radius:50%; background:#eef0f6; color:var(--ink); display:grid; place-items:center; } .vic svg { width:17px; height:17px; fill:none; stroke:currentColor; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
+  .tt { flex:1; min-width:0; display:flex; flex-direction:column; justify-content:flex-start; padding-top:3px; line-height:1.25; } .tt b { font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } .tt small { color:var(--muted); font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .trk.over .tt b::after { content:" ●"; color:#d6453d; font-size:9px; } .trk.cold .tt b::after { content:" ●"; color:#3b82f6; font-size:9px; } .trk.over.cold .tt b::after { content:" ●●"; color:#d6453d; }
+  .ctl { flex:none; display:flex; align-items:center; gap:4px; }
+  .tb { width:32px; height:32px; padding:0; border:0; border-radius:10px; background:transparent; color:#8b92ad; cursor:pointer; display:grid; place-items:center; } .tb svg { width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+  .tb:hover { background:var(--hover); } .tb:focus-visible, .vol:focus-visible { outline:3px solid #9aa2ff; outline-offset:1px; }
+  .tb[data-act="mute"].on { background:#fde8e6; color:#d6453d; } .tb[data-act="solo"].on { background:#fff1c2; color:#8a5a00; }
+  .vol { -webkit-appearance:none; appearance:none; width:64px; height:32px; margin:0; background:transparent; cursor:pointer; }
+  .vol::-webkit-slider-runnable-track { height:4px; border-radius:2px; background:linear-gradient(90deg, var(--accent) var(--p, 100%), #dfe2ee var(--p, 100%)); } .vol::-webkit-slider-thumb { -webkit-appearance:none; width:14px; height:14px; margin-top:-5px; border-radius:50%; background:#fff; border:2px solid var(--accent); }
+  .vol::-moz-range-track { height:4px; border-radius:2px; background:#dfe2ee; } .vol::-moz-range-progress { height:4px; border-radius:2px; background:var(--accent); } .vol::-moz-range-thumb { width:10px; height:10px; border-radius:50%; background:#fff; border:2px solid var(--accent); }
+  .trk.muted .tt, .trk.muted .vic { opacity:.45; } .trk.muted .tt b { text-decoration:line-through; }
+  .rs { position:absolute; left:8px; right:8px; bottom:-1px; height:8px; cursor:ns-resize; touch-action:none; z-index:2; } .rs::after { content:""; position:absolute; left:50%; bottom:2px; width:36px; height:3px; margin-left:-18px; border-radius:2px; background:#c3c8dc; opacity:0; } .trk:hover .rs::after, .rs:active::after { opacity:1; }
+  #ln-track { position:relative; flex:1; cursor:col-resize; touch-action:none; }
+  #ln-canvas { display:block; width:100%; }
+  .menu button.danger { color:#d6453d; }
+  #playhead, #playhead2 { position:absolute; top:0; bottom:0; left:0; width:0; pointer-events:none; }
+  #playhead::before { content:""; position:absolute; left:-1px; top:12px; bottom:0; width:2px; background:var(--ink); }
+  #playhead2::before { content:""; position:absolute; left:-1px; top:0; bottom:0; width:2px; background:var(--ink); }
+  #playhead i { position:absolute; left:-6px; top:2px; width:12px; height:14px; border-radius:5px 5px 7px 7px; background:var(--ink); }
+  #bstat { left:50%; top:12px; transform:translateX(-50%); font-weight:600; color:var(--ink); }
+  #bstat a { color:var(--accent); cursor:pointer; }
+  #credit { position:fixed; right:12px; bottom:calc(var(--tl, 150px) + 6px); font-size:10px; color:var(--muted); opacity:.75; pointer-events:none; text-shadow:0 0 3px #fff, 0 0 3px #fff; }
+  #loading { left:50%; top:50%; transform:translate(-50%,-50%); font-size:14px; color:var(--ink); }
+  #wash { position:fixed; inset:0; pointer-events:none; background:#e9ecf3; opacity:0; }
+  #line { position:fixed; inset:0; width:100%; height:100%; pointer-events:none; }
+  #pois { position:fixed; inset:0; pointer-events:none; overflow:hidden; }
+  .poi { position:absolute; left:0; top:0; width:0; height:0; will-change:transform; }
+  .dot { position:absolute; left:-10px; top:-10px; width:20px; height:20px; box-sizing:border-box; border-radius:50%;
+    background:#fff; border:5px solid var(--accent); pointer-events:auto; cursor:default; }
+  .chip { position:absolute; left:0; bottom:20px; transform:translateX(-50%); padding:6px 12px; border-radius:12px;
+    white-space:nowrap; font-size:13px; font-weight:600; background:rgba(255,253,249,.94);
+    box-shadow:0 8px 24px rgba(31,43,120,.14), 0 1px 2px rgba(31,43,120,.10); opacity:0; transition:opacity .15s; }
+  .chip::after { content:""; position:absolute; left:50%; bottom:-5px; width:10px; height:10px; background:inherit;
+    transform:translateX(-50%) rotate(45deg); border-radius:2px; }
+  .poi.show .chip { opacity:1; }
+</style>
+</head>
+<body>
+<div id="wash"></div>
+<svg id="line"></svg>
+<div id="pois"></div>
+<div id="loading" class="pill">Loading model …</div>
+<div id="bstat" class="pill" hidden role="status" aria-live="polite"></div>
+<div id="credit">© OpenStreetMap contributors</div>
+<div id="hud">
+<div id="bench" role="toolbar" aria-label="Map tools">
+  <a class="tg" href="../" title="Back to the demo overview" aria-label="Back to the demo overview"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></a>
+  <span class="sep"></span>
+  <button class="tg on" data-k="traffic" aria-pressed="true" title="Traffic: colour = road utilisation, model calculation, not measured (Q)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 16h16M5.5 16l1.6-5.5h9.8l1.6 5.5M7 16v2.5M17 16v2.5"/><circle cx="8.5" cy="13.5" r=".6"/><circle cx="15.5" cy="13.5" r=".6"/></svg><kbd>Q</kbd></button>
+  <button class="tg on" data-k="lines" aria-pressed="true" title="Lines (W)"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5.5" cy="18" r="2"/><circle cx="18.5" cy="6" r="2"/><path d="M7.5 18H13a4 4 0 0 0 0-8h-2a3 3 0 0 1 0-4h5"/></svg><kbd>W</kbd></button>
+  <button class="tg on" data-k="alerts" aria-pressed="true" title="Alerts: lines that need action now, simulated counts (E)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17v.4"/></svg><kbd>E</kbd></button>
+  <button class="tg on" data-k="labels" aria-pressed="true" title="Stop names (R)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16v9H13l-3 3v-3H4z"/></svg><kbd>R</kbd></button>
+  <button class="tg on" data-k="geom" aria-pressed="true" hidden title="Real route or schematic lines (T)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18c5 0 3-12 8-12s3 12 8 12"/></svg><kbd>T</kbd></button>
+  <span class="sep"></span>
+  <span class="sep"></span>
+  <button class="tg" id="day" type="button" aria-haspopup="menu" aria-expanded="false" title="Day (A)"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg><kbd>A</kbd></button>
+  <button class="tg" id="wx" type="button" aria-haspopup="menu" aria-expanded="false" title="Weather (S)"><svg viewBox="0 0 24 24" aria-hidden="true"></svg><kbd>S</kbd></button>
+  <button class="tg on" id="tlbtn" type="button" aria-pressed="true" title="Timeline: minimise or restore (D)"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="2"/><path d="M4 14h16"/></svg><kbd>D</kbd></button>
+  <span class="sep"></span>
+  <button class="tg" data-k="panel" aria-pressed="false" title="Details panel (F)"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="2"/><path d="M14 5v14"/></svg><kbd>F</kbd></button>
+</div>
+<div id="lenses" role="toolbar" aria-label="Lenses (keys 1 to 9 and 0)"></div>
+</div>
+<aside id="rpanel" hidden aria-label="Details">
+  <div id="rp-grip" role="separator" aria-orientation="vertical" aria-label="Resize panel" tabindex="0" title="Drag to resize"></div>
+  <div id="rp-head"><span id="rp-title">Details</span></div>
+  <div id="rp-body"><p>Nothing here yet. This panel shows details for the active lens, for example a selected line, stop or finding.</p></div>
+</aside>
+<div id="timeline">
+  <div id="tl-grip" role="separator" aria-orientation="horizontal" aria-label="Resize timeline height" tabindex="0" title="Drag to resize the timeline"></div>
+  <div id="tl-head">
+    <div id="speed" role="group" aria-label="Playback"></div>
+    <div id="clock">05:30</div>
+    <div id="tl-modes" role="group" aria-label="Show lines by transport system"></div>
+    <div id="tl-zoom" role="group" aria-label="Zoom the time axis">
+      <button class="tg" id="zout" type="button" aria-label="Zoom out" title="Zoom out (-)"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M16 16l4 4M8 11h6"/></svg></button>
+      <button class="tg" id="zin" type="button" aria-label="Zoom in" title="Zoom in (+). Ctrl or ⌘ + scroll zooms at the pointer, Shift + scroll moves."><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M16 16l4 4M8 11h6M11 8v6"/></svg></button>
+    </div>
+  </div>
+  <div id="tl-body">
+    <div id="tl-labels"><span>Traffic</span></div>
+    <div id="tl-track"><canvas id="tl-canvas"></canvas><div id="playhead"><i></i></div></div>
+  </div>
+  <div id="tl-lines"><div class="lnwrap"><div id="ln-labels"></div><div id="ln-track"><canvas id="ln-canvas"></canvas><div id="playhead2"></div></div></div></div>
+</div>
+
+<script src="model-store.js"></script>
+<script>
+// Modell laden: ?model=<id> aus dem Browser-Speicher (Wizard), sonst die Hamburg-Demo
+window.CITY_READY = (async () => {
+  const id = new URLSearchParams(location.search).get('model');
+  if(id && id !== 'demo-hamburg'){
+    const rec = await ModelStore.get(id);
+    if(!rec) throw new Error('This model is not stored in this browser (anymore).');
+    window.MODEL_REC = rec;   // für die Hintergrund-Berechnung der 3D-Karte (rec.build)
+    return rec.city;
+  }
+  await new Promise((ok, fail) => { const s = document.createElement('script'); s.src = 'hamburg-data.js'; s.onload = ok; s.onerror = () => fail(new Error('Demo data not found.')); document.head.appendChild(s); });
+  window.CITY.meta.name = window.CITY.meta.name || 'Hamburg';
+  return window.CITY;
+})();
+</script>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+
+let CITY;
+try { CITY = await window.CITY_READY; }
+catch(e){
+  const el = document.getElementById('loading');
+  el.textContent = e.message + ' '; const a = document.createElement('a'); a.href = 'index.html'; a.textContent = '← Back to models'; el.appendChild(a);
+  throw e;
+}
+const HX = CITY.meta.hx, HZ = CITY.meta.hz;
+document.title = (CITY.meta.name || 'Model') + ' · Route visualization';
+document.getElementById('loading').textContent = `Building ${CITY.meta.name || 'model'} …`;
+
+
+/* ---------- Grundlagen ---------- */
+function mulberry32(a){ return () => { a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a);
+  t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+const rnd = mulberry32(11);
+const R = (a,b) => a + (b-a)*rnd();
+const pick = arr => arr[Math.floor(rnd()*arr.length)];
+const tick = () => new Promise(r => setTimeout(r));
+
+const C = { bg:0xe9ecf3, tree:[0x74c68a,0x5fb877,0x8ad39b], trunk:0xb9a58c,
+  car:[0xffffff,0x2b2f3d,0x1f2bff,0x7a8199,0x2b2f3d,0xffffff], glass:0xc9d1ea };
+const matCache = new Map();
+// Wetter und Tageszeit wirken über gemeinsame Uniforms auf Karte, Untergrund, Gebäude, Bäume und Fahrzeuge (nicht auf Auslastungsfarben, Linie und Beschriftungen)
+const WX = {uSat:{value:1}, uCon:{value:1}, uTint:{value:new THREE.Vector3(1,1,1)}};
+function applyWeather(mat, mute = false){
+  mat.onBeforeCompile = sh => {
+    Object.assign(sh.uniforms, WX);
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uSat; uniform float uCon; uniform vec3 uTint;');
+    if(mute) sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
+      float lm = dot(diffuseColor.rgb, vec3(.2126,.7152,.0722));
+      diffuseColor.rgb = mix(mix(vec3(lm), diffuseColor.rgb, ${MUTE.sat}), vec3(${MUTE.k.join(',')}), ${MUTE.mix});`);
+    sh.fragmentShader = sh.fragmentShader.replace('#include <opaque_fragment>', `#include <opaque_fragment>
+      float lw = dot(gl_FragColor.rgb, vec3(.2126,.7152,.0722));
+      gl_FragColor.rgb = mix(vec3(lw), gl_FragColor.rgb, uSat);
+      gl_FragColor.rgb = (gl_FragColor.rgb - .45)*uCon + .45;
+      gl_FragColor.rgb *= uTint;`);
+  };
+  mat.customProgramCacheKey = () => 'wx' + (mute ? 1 : 0);
+  return mat;
+}
+const std = (c, o={}) => { const k = c + JSON.stringify(o); if(!matCache.has(k)) matCache.set(k, applyWeather(new THREE.MeshStandardMaterial({color:c, roughness:.95, metalness:0, ...o}))); return matCache.get(k); };
+
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(C.bg);
+
+const FRUSTUM = 300;
+const cam = new THREE.OrthographicCamera(-1,1,1,-1,-80000,80000);
+let aspect = 1;
+function fit(){
+  const w = innerWidth || 1280, h = innerHeight || 800; aspect = w/h;   // ein ausgeblendeter Tab meldet 0 x 0: dann mit einer Standardgröße rechnen, sonst wird alles NaN
+  cam.left = -FRUSTUM*aspect; cam.right = FRUSTUM*aspect; cam.top = FRUSTUM; cam.bottom = -FRUSTUM;
+  cam.updateProjectionMatrix(); renderer.setSize(w,h);
+}
+addEventListener('resize', fit); fit();
+
+/* ---------- Licht: Schatten folgen dem sichtbaren Ausschnitt ---------- */
+const hemi = new THREE.HemisphereLight(0xffffff, 0xc9d0ea, 1.35); scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xfff4e6, 2.0);
+sun.castShadow = true;
+sun.shadow.mapSize.set(4096, 4096);
+sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.5;
+const SUN_OFFSET = new THREE.Vector3(-260, 1200, -825);
+scene.add(sun, sun.target);
+let shadowZoom = 0;
+function updateSun(target){
+  sun.target.position.copy(target); sun.position.copy(target).add(SUN_OFFSET);
+  if(shadowZoom !== cam.zoom){
+    shadowZoom = cam.zoom;
+    const e = Math.min(2200, FRUSTUM*Math.max(aspect,1)*1.8/cam.zoom);
+    Object.assign(sun.shadow.camera, {left:-e, right:e, top:e, bottom:-e, near:1, far:5000});
+    sun.shadow.camera.updateProjectionMatrix();
+  }
+}
+
+/* ---------- Boden: die Standardkarte (unten) liefert alle Bodenfarben; hier nur Hintergrund und Schatten ---------- */
+const bgPlane = new THREE.Mesh(new THREE.PlaneGeometry(40000,40000), new THREE.MeshBasicMaterial({color:C.bg}));  // unbeleuchtet: exakt die Hintergrundfarbe
+bgPlane.rotation.x = -Math.PI/2; bgPlane.position.y = -3; scene.add(bgPlane);
+const shadowCatcher = new THREE.Mesh(new THREE.PlaneGeometry(2*HX, 2*HZ), new THREE.ShadowMaterial({opacity:.18}));  // zeigt nur die Schatten der Gebäude auf der Karte
+shadowCatcher.rotation.x = -Math.PI/2; shadowCatcher.position.y = .2; shadowCatcher.renderOrder = 100; shadowCatcher.receiveShadow = true; scene.add(shadowCatcher);
+
+/* Dämpfung der Kartenfarben: eine Definition für den Kachel-Shader und für alle Farben, die darauf passen müssen */
+const MUTE = {sat:.32, mix:.22, k:[.93,.94,.97]};
+function muted(hex){
+  const c = new THREE.Color(hex), l = .2126*c.r + .7152*c.g + .0722*c.b;
+  const o = [c.r,c.g,c.b].map((v,i) => (l + (v-l)*MUTE.sat)*(1-MUTE.mix) + MUTE.k[i]*MUTE.mix);
+  return new THREE.Color().setRGB(o[0], o[1], o[2], THREE.LinearSRGBColorSpace);
+}
+
+/* ---------- Standardkarte (Rasterkacheln) unter und um die 3D-Fläche ---------- */
+const TILE_URL = (z,x,y) => `https://tile.openstreetmap.org/${z}/${x}/${y}.png`;  // OSM-Standardkarte, 256 px (Prototyp; fürs Produkt eigener Kachelserver)
+const [LAT0, LON0] = CITY.meta.center, KLAT = 110574, KLON = 111320*Math.cos(LAT0*Math.PI/180);  // dieselbe Projektion wie die Daten
+const toLocal = (lat,lon) => [(lon-LON0)*KLON, -(lat-LAT0)*KLAT];
+const fromLocal = (x,z) => [LAT0 - z/KLAT, LON0 + x/KLON];
+const tileLon = (x,z) => x/2**z*360-180;
+const tileLat = (y,z) => 180/Math.PI*Math.atan(Math.sinh(Math.PI-2*Math.PI*y/2**z));
+const lonToX = (lon,z) => Math.floor((lon+180)/360*2**z);
+const latToY = (lat,z) => { const r = lat*Math.PI/180; return Math.floor((1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2*2**z); };
+const texLoader = new THREE.TextureLoader(); texLoader.setCrossOrigin('anonymous');
+const maxAniso = renderer.capabilities.getMaxAnisotropy();
+const mapLayers = [{y:-1.2, tiles:new Map()}, {y:-.8, tiles:new Map()}];  // grob (immer da) und fein (je nach Zoom)
+function tileMesh(z,x,y,yPos){
+  const [xa,za] = toLocal(tileLat(y,z), tileLon(x,z)), [xb,zb] = toLocal(tileLat(y+1,z), tileLon(x+1,z));
+  const geo = new THREE.PlaneGeometry(xb-xa, zb-za); geo.rotateX(-Math.PI/2);
+  const mat = new THREE.MeshBasicMaterial({color:0xffffff}), mesh = new THREE.Mesh(geo, mat);
+  applyWeather(mat, true);
+  mesh.position.set((xa+xb)/2, yPos, (za+zb)/2); mesh.visible = false; scene.add(mesh);
+  texLoader.load(TILE_URL(z,x,y), t => { t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = maxAniso; mat.map = t; mat.needsUpdate = true; mesh.visible = true; }, undefined, () => console.warn('Kachel fehlt', z, x, y));
+  return mesh;
+}
+function dropTile(m){ scene.remove(m); m.geometry.dispose(); if(m.material.map) m.material.map.dispose(); m.material.dispose(); }
+const rayCaster = new THREE.Raycaster(), hit = new THREE.Vector3();
+function syncLayer(layer, z, b){
+  const want = new Set();
+  if(z){
+    const [laN, loW] = fromLocal(b.x0, b.z0), [laS, loE] = fromLocal(b.x1, b.z1);
+    const xa = lonToX(loW,z), xb = lonToX(loE,z), ya = latToY(laN,z), yb = latToY(laS,z);
+    if((xb-xa+1)*(yb-ya+1) <= 120) for(let x=xa;x<=xb;x++) for(let y=ya;y<=yb;y++) want.add(`${z}/${x}/${y}`);
+  }
+  for(const [k,m] of layer.tiles) if(!want.has(k)){ dropTile(m); layer.tiles.delete(k); }
+  for(const k of want) if(!layer.tiles.has(k)){ const [z_,x,y] = k.split('/').map(Number); layer.tiles.set(k, tileMesh(z_,x,y,layer.y)); }
+}
+function updateTiles(){
+  let x0=1e9, x1=-1e9, z0=1e9, z1=-1e9;
+  for(const [nx,ny] of [[-1,-1],[1,-1],[-1,1],[1,1]]){
+    rayCaster.setFromCamera({x:nx, y:ny}, cam);
+    // Schnitt der Geraden mit dem Boden (y = 0); bei der Orthokamera liegen die Strahlenanfänge unter dem Boden, "nach vorn" genügt nicht
+    const o = rayCaster.ray.origin, d = rayCaster.ray.direction;
+    hit.copy(o).addScaledVector(d, -o.y/d.y);
+    x0=Math.min(x0,hit.x); x1=Math.max(x1,hit.x); z0=Math.min(z0,hit.z); z1=Math.max(z1,hit.z);
+  }
+  if(x0 > x1) return;
+  const m = .08*Math.max(x1-x0, z1-z0), b = {x0:x0-m, x1:x1+m, z0:z0-m, z1:z1+m};
+  const mpp = (2*FRUSTUM*aspect/cam.zoom)/innerWidth;                     // Meter pro Bildschirmpixel
+  const zFine = Math.round(Math.log2(156543.03*Math.cos(LAT0*Math.PI/180)/mpp));  // 256-px-Kacheln
+  syncLayer(mapLayers[0], 11, b);
+  syncLayer(mapLayers[1], zFine > 11 ? Math.min(zFine, 19) : null, b);
+}
+
+/* ---------- Geometrie-Helfer ---------- */
+const ring = f => { const v=[]; for(let i=0;i<f.length;i+=2) v.push(new THREE.Vector2(f[i], -f[i+1])); return v; };
+function shapeOf(p){ const s = new THREE.Shape(ring(p.r)); (p.h||[]).forEach(h => s.holes.push(new THREE.Path(ring(h)))); return s; }
+
+/* ---------- Untergrund aus eigenen Daten, in den Farben der Standardkarte ---------- */
+// Füllfarben der OSM-Standardkarte; sie laufen durch dieselbe Dämpfung (muted) wie die Kacheln, daher sieht man keinen Übergang.
+const OSM = {
+  land:0xf2efe9, water:0xaad3df, building:0xd9d0c9,
+  green:{park:0xc8facc, grass:0xcdebb0, forest:0xadd19e, cemetery:0xaacbaf},
+  landuse:{residential:0xe0dfdf, commercial:0xf2dad9, retail:0xffd6d1, industrial:0xebdbe8, railway:0xebdbe8, construction:0xc7c7b4,
+           allotments:0xc9e1bf, farmland:0xeef0d5, farmyard:0xeef0d5, garages:0xdfddce, brownfield:0xc7c7b4},
+  road:{motorway:[0xe892a2,0xdc2a67], trunk:[0xf9b29c,0xc84e2f], primary:[0xfcd6a4,0xa06b00], secondary:[0xf7fabf,0x707d05],
+        tertiary:[0xffffff,0x8f8f8f], unclassified:[0xffffff,0xbbbbbb], residential:[0xffffff,0xbbbbbb], living_street:[0xededed,0xbbbbbb],
+        service:[0xffffff,0xbbbbbb], pedestrian:[0xdddde8,0xbbbbbb]}   // [Füllung, Rand]
+};
+const ROAD_ORDER = ['service','pedestrian','living_street','residential','unclassified','tertiary','secondary','primary','trunk','motorway'];
+const flatMats = [], flatMeshes = [];   // Untergrund blendet mit dem Zoom ein, weit draußen zeigt nur die Karte
+let flatOrder = 1;
+function flatMat(hex){ const m = applyWeather(new THREE.MeshBasicMaterial({color:muted(hex), transparent:true, opacity:0, depthWrite:false, side:THREE.DoubleSide})); flatMats.push(m); return m; }
+function flatAdd(geo, hex){ const m = new THREE.Mesh(geo, flatMat(hex)); m.renderOrder = flatOrder++; m.visible = false; m.receiveShadow = false; scene.add(m); flatMeshes.push(m); return m; }
+function flatPolys(items, hex, y){
+  const geos = [];
+  for(const p of items){ try { const g = new THREE.ShapeGeometry(shapeOf(p)); g.rotateX(-Math.PI/2); g.translate(0,y,0); geos.push(g); } catch(e){} }
+  if(geos.length) flatAdd(mergeGeometries(geos), hex);
+}
+/* Linienzug als flaches Band, Gelenke als kleine Scheiben */
+function addRibbon(pos, pts, w, y){
+  const hw = w/2, push = (x,z) => pos.push(x, y, z);
+  for(let i=0;i+3<pts.length;i+=2){
+    const x1=pts[i], z1=pts[i+1], x2=pts[i+2], z2=pts[i+3], dx=x2-x1, dz=z2-z1, len=Math.hypot(dx,dz);
+    if(len < .01) continue;
+    const nx=-dz/len*hw, nz=dx/len*hw;
+    push(x1+nx,z1+nz); push(x2-nx,z2-nz); push(x1-nx,z1-nz);
+    push(x1+nx,z1+nz); push(x2+nx,z2+nz); push(x2-nx,z2-nz);
+  }
+  for(let i=2;i+2<pts.length;i+=2){
+    const cx=pts[i], cz=pts[i+1];
+    for(let k=0;k<8;k++){
+      const a0=k/8*Math.PI*2, a1=(k+1)/8*Math.PI*2;
+      push(cx,cz); push(cx+Math.cos(a0)*hw, cz+Math.sin(a0)*hw); push(cx+Math.cos(a1)*hw, cz+Math.sin(a1)*hw);
+    }
+  }
+}
+function ribbonMesh(pos, hex){
+  if(!pos.length) return;
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos,3));
+  const n = new Float32Array(pos.length); for(let i=1;i<n.length;i+=3) n[i]=1;
+  g.setAttribute('normal', new THREE.BufferAttribute(n,3));
+  flatAdd(g, hex);
+}
+const byKey = (arr, key) => { const m = new Map(); for(const x of arr){ const k = key(x); if(!m.has(k)) m.set(k, []); m.get(k).push(x); } return m; };
+
+function buildGround(){
+  const base = new THREE.PlaneGeometry(2*HX, 2*HZ); base.rotateX(-Math.PI/2); base.translate(0,.01,0);
+  flatAdd(base, OSM.land);
+  for(const [k, items] of byKey(CITY.land || [], p => p.k)) flatPolys(items, OSM.landuse[k] ?? OSM.land, .02);
+  for(const [k, items] of byKey(CITY.parks, p => p.k || 'grass')) flatPolys(items, OSM.green[k] ?? OSM.green.grass, .03);
+  flatPolys(CITY.water, OSM.water, .04);
+  { const pos = []; CITY.waterLines.forEach(l => addRibbon(pos, l.p, l.w, .04)); ribbonMesh(pos, OSM.water); }
+  // Straßen: erst alle Ränder, dann alle Füllungen, jeweils nach Wichtigkeit, damit Kreuzungen sauber aussehen
+  const roads = byKey(CITY.roads, r => r.c || 'residential');
+  for(const c of ROAD_ORDER){ const items = roads.get(c); if(!items) continue;
+    const pos = []; items.forEach(r => addRibbon(pos, r.p, r.w + 1.4, .06)); ribbonMesh(pos, (OSM.road[c] || OSM.road.residential)[1]); }
+  for(const c of ROAD_ORDER){ const items = roads.get(c); if(!items) continue;
+    const pos = []; items.forEach(r => addRibbon(pos, r.p, r.w, .08)); ribbonMesh(pos, (OSM.road[c] || OSM.road.residential)[0]); }
+}
+
+/* ---------- Aufbau ---------- */
+const washEl = document.getElementById('wash');
+const tall = [];  // Ebenen, die mit dem Zoom aus der Fläche in die Höhe wachsen
+async function build(){
+  buildGround();
+  await tick();
+  // Gebäude: ein zusammengefasstes Mesh, Farbe je Eckpunkt. Das Dach hat die Farbe des Gebäude-Fußabdrucks der Karte,
+  // damit das Gebäude nahtlos aus der Karte herauswächst (Beleuchtung dämpft Flächen nach oben auf rund 0,92).
+  const BLD_TOP = muted(OSM.building).multiplyScalar(1/.92), BLD_SIDE = BLD_TOP.clone().multiplyScalar(1.04);
+  {
+    // Kachelweise (1 km): jede Kachel ist ein eigenes Mesh. Die Grafikkarte zeichnet nur sichtbare Kacheln (Berlin: über 250.000 Gebäude),
+    // und der Speicher wird nach jeder Kachel frei. Ein Modell ohne Gebäude (z. B. ohne 3D-Build) ist erlaubt.
+    const TILE = 1000, buckets = new Map(), list = CITY.buildings;
+    for(let i=0;i<list.length;i++){ const r = list[i].r, k = Math.floor(r[0]/TILE)*100000 + Math.floor(r[1]/TILE); (buckets.get(k) || buckets.set(k, []).get(k)).push(i); }
+    const top = BLD_TOP, side = BLD_SIDE, mat = std(0xffffff, {vertexColors:true});
+    for(const idxs of buckets.values()){
+      const geos = [];
+      for(const i of idxs){
+        try {
+          const g = new THREE.ExtrudeGeometry(shapeOf(list[i]), {depth:list[i].t, bevelEnabled:false});
+          g.rotateX(-Math.PI/2);
+          const nrm = g.attributes.normal, col = new Float32Array(nrm.count*3);
+          for(let v=0; v<nrm.count; v++){ const c = nrm.getY(v) > .5 ? top : side; col[3*v]=c.r; col[3*v+1]=c.g; col[3*v+2]=c.b; }
+          g.setAttribute('color', new THREE.BufferAttribute(col,3));
+          geos.push(g);
+        } catch(e){}
+      }
+      if(geos.length){
+        const merged = mergeGeometries(geos); geos.forEach(g => g.dispose());
+        const m = new THREE.Mesh(merged, mat); m.castShadow = m.receiveShadow = true; scene.add(m); tall.push(m);
+      }
+      await tick();
+    }
+  }
+  await tick();
+
+  // Bäume: Straßenbäume aus den Daten, Grünflächen werden aufgefüllt
+  {
+    const trees = CITY.trees.length > 4000 ? CITY.trees.filter((_,i)=> i % Math.ceil(CITY.trees.length/4000) === 0) : CITY.trees.slice();
+    const inside = (x,z,r) => { let c=false; for(let i=0,j=r.length-2;i<r.length;j=i,i+=2){
+      const xi=r[i],zi=r[i+1],xj=r[j],zj=r[j+1]; if((zi>z)!==(zj>z) && x < (xj-xi)*(z-zi)/(zj-zi)+xi) c=!c; } return c; };
+    for(const p of CITY.parks){
+      const r = p.r; let a=0; for(let i=0,j=r.length-2;i<r.length;j=i,i+=2) a += r[j]*r[i+1]-r[i]*r[j+1]; a = Math.abs(a)/2;
+      let xs=[1e9,-1e9], zs=[1e9,-1e9]; for(let i=0;i<r.length;i+=2){ xs=[Math.min(xs[0],r[i]),Math.max(xs[1],r[i])]; zs=[Math.min(zs[0],r[i+1]),Math.max(zs[1],r[i+1])]; }
+      let want = Math.min(a/200, 300), guard = 0;
+      while(want > 0 && guard++ < want*12){ const x=R(xs[0],xs[1]), z=R(zs[0],zs[1]); if(inside(x,z,r)){ trees.push([x,z]); want--; } }
+    }
+    const crownGeo = new THREE.SphereGeometry(1,12,9), trunkGeo = new THREE.CylinderGeometry(.25,.32,1,7);
+    const crowns = new THREE.InstancedMesh(crownGeo, std(0xffffff), trees.length);
+    const trunks = new THREE.InstancedMesh(trunkGeo, std(C.trunk), trees.length);
+    const d = new THREE.Object3D(), col = new THREE.Color();
+    trees.forEach(([x,z],i)=>{
+      const k = R(.8,1.25);
+      d.rotation.set(0,0,0);
+      d.position.set(x, 5.2*k, z); d.scale.set(3.2*k, 3.4*k, 3.2*k); d.updateMatrix(); crowns.setMatrixAt(i,d.matrix); crowns.setColorAt(i, col.set(pick(C.tree)));
+      d.position.set(x, 1.6*k, z); d.scale.set(k, 3.2*k, k); d.updateMatrix(); trunks.setMatrixAt(i,d.matrix);
+    });
+    crowns.castShadow = trunks.castShadow = true; crowns.receiveShadow = true;
+    scene.add(crowns, trunks); tall.push(crowns, trunks);
+  }
+}
+
+/* ---------- Verkehr: Modellrechnung (keine Messdaten) ---------- */
+// Freie Geschwindigkeit (km/h) und Kapazität (Fz/h je Richtung) je Straßenklasse. Annahmen, später durch Visum oder Messwerte ersetzbar.
+const ROADCLASS = {
+  motorway:{v:80,cap:3600}, trunk:{v:60,cap:2400}, primary:{v:50,cap:1500}, secondary:{v:50,cap:1100},
+  tertiary:{v:40,cap:800}, unclassified:{v:30,cap:600}, residential:{v:30,cap:400}, living_street:{v:10,cap:150} };
+// Verlaufsfarben der Auslastung (polarisiert): kalt (blau) bis 10 %, optimal (grün), ab 65 % Warnung (gelb), ab 100 % Alarm (rot)
+const LOAD_STOPS = [[0,0x3d5afe],[.10,0x1fb5c9],[.25,0x2fc66b],[.50,0x8ccf3a],[.65,0xf2d12b],[.85,0xf59a23],[1,0xe5322d],[1.25,0x9c0f2c]];
+const LOAD_MAX = LOAD_STOPS[LOAD_STOPS.length-1][0];
+const _c0 = new THREE.Color(), _c1 = new THREE.Color();
+function loadColor(u, out = new THREE.Color()){
+  u = Math.max(0, Math.min(LOAD_MAX, u));
+  let i = 1; while(i < LOAD_STOPS.length-1 && u > LOAD_STOPS[i][0]) i++;
+  const [ua, ca] = LOAD_STOPS[i-1], [ub, cb] = LOAD_STOPS[i];
+  return out.copy(_c0.set(ca)).lerp(_c1.set(cb), (u-ua)/(ub-ua));
+}
+
+class Heap {  // Min-Heap für Dijkstra
+  constructor(n){ this.k = new Float64Array(n); this.v = new Int32Array(n); this.size = 0; this.topK = 0; this.topV = 0; }
+  push(k, v){ let i = this.size++; const K = this.k, V = this.v; while(i > 0){ const p = (i-1) >> 1; if(K[p] <= k) break; K[i] = K[p]; V[i] = V[p]; i = p; } K[i] = k; V[i] = v; }
+  pop(){ const K = this.k, V = this.v; this.topK = K[0]; this.topV = V[0]; const k = K[--this.size], v = V[this.size]; let i = 0;
+    for(;;){ let c = 2*i+1; if(c >= this.size) break; if(c+1 < this.size && K[c+1] < K[c]) c++; if(K[c] >= k) break; K[i] = K[c]; V[i] = V[c]; i = c; }
+    K[i] = k; V[i] = v; }
+}
+
+async function buildTrafficModel(onProgress){
+  // 1) Netz als gerichteter Graph
+  const nid = new Map(), NX = [], NZ = [], out = [], eFrom = [], eTo = [], eLen = [], eCls = [], eW = [], segs = [];
+  const node = (id,x,z) => { let i = nid.get(id); if(i === undefined){ i = NX.length; nid.set(id,i); NX.push(x); NZ.push(z); out.push([]); } return i; };
+  const addEdge = (a,b,len,cls,w) => { const e = eFrom.length; eFrom.push(a); eTo.push(b); eLen.push(len); eCls.push(cls); eW.push(w); out[a].push(e); return e; };
+  for(const r of CITY.roads){
+    if(!r.d) continue;
+    const cls = ROADCLASS[r.c] ? r.c : 'residential';
+    for(let i=1;i<r.n.length;i++){
+      const a = node(r.n[i-1], r.p[2*i-2], r.p[2*i-1]), b = node(r.n[i], r.p[2*i], r.p[2*i+1]);
+      if(a === b) continue;
+      const len = Math.hypot(NX[b]-NX[a], NZ[b]-NZ[a]); if(len < .5) continue;
+      segs.push({e1:addEdge(a,b,len,cls,r.w), e2:addEdge(b,a,len,cls,r.w), a, b, w:r.w});
+    }
+  }
+  const N = NX.length, M = eFrom.length;
+  const vfree = new Float32Array(M), cap = new Float32Array(M), tcost = new Float32Array(M);
+  for(let e=0;e<M;e++){ const c = ROADCLASS[eCls[e]]; vfree[e] = c.v/3.6; cap[e] = c.cap; tcost[e] = eLen[e]/vfree[e]; }
+
+  // 2) Verkehrszellen: Gewicht = Geschossfläche der Gebäude (Fläche × Geschosse) in 250-m-Zellen
+  const CELL = 250, gx = Math.ceil(2*HX/CELL), gz = Math.ceil(2*HZ/CELL), W = new Float64Array(gx*gz);
+  for(const b of CITY.buildings){
+    const r = b.r; let sx = 0, sz = 0, a2 = 0;
+    for(let i=0, j=r.length-2; i<r.length; j=i, i+=2){ a2 += r[j]*r[i+1] - r[i]*r[j+1]; sx += r[i]; sz += r[i+1]; }
+    const n = r.length/2, ix = Math.floor((sx/n+HX)/CELL), iz = Math.floor((sz/n+HZ)/CELL);
+    if(ix >= 0 && iz >= 0 && ix < gx && iz < gz) W[iz*gx+ix] += Math.abs(a2)/2 * Math.min(b.t, 40)/3.2;
+  }
+  const NC = 150, ngrid = new Map(), nkey = (ix,iz) => ix*100003 + iz;
+  for(let i=0;i<N;i++){ const k = nkey(Math.floor((NX[i]+HX)/NC), Math.floor((NZ[i]+HZ)/NC)); if(!ngrid.has(k)) ngrid.set(k, []); ngrid.get(k).push(i); }
+  const nearest = (x,z) => { const cx = Math.floor((x+HX)/NC), cz = Math.floor((z+HZ)/NC); let best = -1, bd = Infinity;
+    for(let r=0; r<=6 && best < 0; r++) for(let dx=-r; dx<=r; dx++) for(let dz=-r; dz<=r; dz++){
+      if(Math.max(Math.abs(dx),Math.abs(dz)) !== r) continue;
+      for(const i of ngrid.get(nkey(cx+dx, cz+dz)) || []){ const d = (NX[i]-x)**2 + (NZ[i]-z)**2; if(d < bd){ bd = d; best = i; } } }
+    return best; };
+  const zones = [];
+  [...W.keys()].filter(i => W[i] > 0).sort((a,b) => W[b]-W[a]).slice(0, 420).forEach(i => {
+    const n = nearest(((i%gx)+.5)*CELL-HX, (Math.floor(i/gx)+.5)*CELL-HZ); if(n >= 0) zones.push({node:n, w:W[i]});
+  });
+  const sumW = zones.reduce((s,z) => s+z.w, 0);
+
+  // 3) Umlegung: jede Zelle verteilt ihre Fahrten nach Gewicht und Fahrzeit (Gravitationsansatz) auf kürzeste Wege
+  const flow = new Float64Array(M), dist = new Float64Array(N), prevE = new Int32Array(N), accum = new Float64Array(N), order = new Int32Array(N);
+  const heap = new Heap(M+N+16), TAU = 900;   // Fahrzeit-Reichweite in Sekunden
+  for(let zi=0; zi<zones.length; zi++){
+    const o = zones[zi]; dist.fill(Infinity); prevE.fill(-1); heap.size = 0; dist[o.node] = 0; heap.push(0, o.node); let cnt = 0;
+    while(heap.size){ heap.pop(); const d = heap.topK, u = heap.topV; if(d > dist[u]) continue; order[cnt++] = u;
+      for(const e of out[u]){ const v = eTo[e], nd = d + tcost[e]; if(nd < dist[v]){ dist[v] = nd; prevE[v] = e; heap.push(nd, v); } } }
+    let S = 0; const wj = zones.map((z,j) => { if(j === zi || !isFinite(dist[z.node])) return 0; const w = z.w*Math.exp(-dist[z.node]/TAU); S += w; return w; });
+    if(S > 0){ const T = o.w/sumW*1e5; zones.forEach((z,j) => { if(wj[j] > 0) accum[z.node] += T*wj[j]/S; });
+      for(let k=cnt-1;k>=0;k--){ const v = order[k], e = prevE[v]; if(e < 0) continue; flow[e] += accum[v]; accum[eFrom[e]] += accum[v]; accum[v] = 0; } }
+    accum[o.node] = 0;
+    if(zi % 12 === 11){ onProgress && onProgress((zi+1)/zones.length); await tick(); }
+  }
+
+  // 4) Eichung der Größenordnung: das 90-%-Quantil der Hauptstraßen liegt bei 85 % Auslastung. Das ist eine Modellannahme.
+  const arterial = new Set(['motorway','trunk','primary','secondary']), ratio = [];
+  for(let e=0;e<M;e++) if(flow[e] > 0 && arterial.has(eCls[e])) ratio.push(flow[e]/cap[e]);
+  ratio.sort((a,b) => a-b);
+  const scale = .85/(ratio[Math.floor(ratio.length*.9)] || 1), f = new Float32Array(M), util = new Float32Array(M);
+  // Grundverkehr: Anlieger-, Liefer- und Parksuchverkehr nach Bebauungsdichte der Umgebung, damit auch Straßen ohne Durchgangsverkehr eine Auslastung haben
+  const wsorted = [...W].filter(x => x > 0).sort((a,b) => a-b), wref = wsorted[Math.floor(wsorted.length*.95)] || 1;
+  const density = e => { const a = eFrom[e], b = eTo[e], ix = Math.floor(((NX[a]+NX[b])/2+HX)/CELL), iz = Math.floor(((NZ[a]+NZ[b])/2+HZ)/CELL);
+    return ix >= 0 && iz >= 0 && ix < gx && iz < gz ? Math.min(1, W[iz*gx+ix]/wref) : 0; };
+  for(let e=0;e<M;e++){ f[e] = flow[e]*scale + cap[e]*(.04 + .2*density(e)); util[e] = f[e]/cap[e]; }
+  for(const s of segs) s.u = Math.max(util[s.e1], util[s.e2]);
+  return {N, M, NX:Float32Array.from(NX), NZ:Float32Array.from(NZ), out, eFrom:Int32Array.from(eFrom), eTo:Int32Array.from(eTo),
+          eLen:Float32Array.from(eLen), eW:Float32Array.from(eW), vfree, cap, flow:f, util, segs};
+}
+
+/* Farbebene der Auslastung: Bänder mit Mindestbreite in Bildschirmpixeln; die Farbe entsteht im Shader aus Auslastung × Tagesgang */
+function makeLoadOverlay(model){
+  const segs = model.segs.filter(s => s.u > 0).sort((a,b) => a.u-b.u), n = segs.length*6;   // aufsteigend: hohe Werte liegen oben
+  const pos = new Float32Array(n*3), off = new Float32Array(n*2), dir = new Float32Array(n*2), end = new Float32Array(n), wid = new Float32Array(n), uu = new Float32Array(n);
+  let k = 0;
+  const put = (x,z,ox,oz,dx,dz,en,w,u) => { pos[3*k] = x; pos[3*k+1] = .14; pos[3*k+2] = z; off[2*k] = ox; off[2*k+1] = oz; dir[2*k] = dx; dir[2*k+1] = dz; end[k] = en; wid[k] = w; uu[k] = u; k++; };
+  for(const s of segs){
+    const ax = model.NX[s.a], az = model.NZ[s.a], bx = model.NX[s.b], bz = model.NZ[s.b], dx = bx-ax, dz = bz-az, l = Math.hypot(dx,dz) || 1, ux = dx/l, uz = dz/l, nx = -uz, nz = ux, u = s.u;
+    put(ax,az, nx,nz, ux,uz, -1, s.w, u); put(bx,bz, -nx,-nz, ux,uz, 1, s.w, u); put(ax,az, -nx,-nz, ux,uz, -1, s.w, u);
+    put(ax,az, nx,nz, ux,uz, -1, s.w, u); put(bx,bz, nx,nz, ux,uz, 1, s.w, u); put(bx,bz, -nx,-nz, ux,uz, 1, s.w, u);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos,3)); g.setAttribute('aOff', new THREE.BufferAttribute(off,2));
+  g.setAttribute('aDir', new THREE.BufferAttribute(dir,2)); g.setAttribute('aEnd', new THREE.BufferAttribute(end,1));
+  g.setAttribute('aW', new THREE.BufferAttribute(wid,1)); g.setAttribute('aU', new THREE.BufferAttribute(uu,1));
+  const stopC = LOAD_STOPS.map(([,c]) => { const col = new THREE.Color(c); return new THREE.Vector3(col.r, col.g, col.b); });
+  const mat = new THREE.ShaderMaterial({ transparent:true, depthWrite:false, side:THREE.DoubleSide,
+    uniforms:{uMpp:{value:1}, uPx:{value:3.4}, uOpacity:{value:1}, uScale:{value:1}, uStopU:{value:LOAD_STOPS.map(s => s[0])}, uStopC:{value:stopC}},
+    vertexShader:`attribute vec2 aOff; attribute vec2 aDir; attribute float aEnd; attribute float aW; attribute float aU;
+      uniform float uMpp; uniform float uPx; uniform float uScale; uniform float uStopU[8]; uniform vec3 uStopC[8]; varying vec3 vC;
+      vec3 loadColor(float u){ u = clamp(u, 0., ${LOAD_MAX.toFixed(3)});
+        for(int i=1;i<8;i++){ if(u <= uStopU[i]){ float t = (u-uStopU[i-1])/(uStopU[i]-uStopU[i-1]); return mix(uStopC[i-1], uStopC[i], t); } }
+        return uStopC[7]; }
+      void main(){ vC = loadColor(aU*uScale); float w = max(aW, uPx*uMpp); vec3 p = position;
+        p.xz += aOff*.5*w + aDir*aEnd*.5*w;   // Breite quer, an den Enden eine halbe Breite verlängert (füllt Knicke)
+        gl_Position = projectionMatrix*modelViewMatrix*vec4(p,1.); }`,
+    fragmentShader:`uniform float uOpacity; varying vec3 vC;
+      void main(){ gl_FragColor = vec4(vC, uOpacity);
+        #include <colorspace_fragment>
+      }` });
+  const mesh = new THREE.Mesh(g, mat); mesh.renderOrder = 60; mesh.frustumCulled = false; scene.add(mesh);
+  return mesh;
+}
+
+/* Fahrzeuge: Anzahl im sichtbaren Ausschnitt folgt der Verkehrsmenge (Fz/h geteilt durch Geschwindigkeit = Fz je Meter), skaliert mit dem Tagesgang f */
+function makeCars(model){
+  const VMAX = 6000, {NX, NZ, out, eFrom, eTo, eLen, eW, vfree, flow, util} = model, M = model.M;
+  const bodies = new THREE.InstancedMesh(new THREE.BoxGeometry(4.4,1.1,1.9), std(0xffffff), VMAX);
+  const cabins = new THREE.InstancedMesh(new THREE.BoxGeometry(2.3,.9,1.7), std(C.glass), VMAX);
+  // Schatten als weiche dunkle Fläche unter dem Fahrzeug, versetzt in Schattenrichtung (echte Schatten sind für so kleine Objekte zu fein)
+  const shGeo = new THREE.PlaneGeometry(1,1); shGeo.rotateX(-Math.PI/2);
+  const shMat = new THREE.MeshBasicMaterial({color:0x000000, transparent:true, opacity:.2, depthWrite:false});
+  const shadows = new THREE.InstancedMesh(shGeo, shMat, VMAX); shadows.renderOrder = 70;
+  bodies.count = cabins.count = shadows.count = 0; bodies.frustumCulled = cabins.frustumCulled = shadows.frustumCulled = false;
+  const group = new THREE.Group(); group.add(shadows, bodies, cabins); scene.add(group);
+  const SH = new THREE.Vector2(-SUN_OFFSET.x, -SUN_OFFSET.z).normalize();
+  const lam = new Float32Array(M), ux = new Float32Array(M), uz = new Float32Array(M);
+  for(let e=0;e<M;e++){
+    const a = eFrom[e], b = eTo[e], l = eLen[e];
+    ux[e] = (NX[b]-NX[a])/l; uz[e] = (NZ[b]-NZ[a])/l;
+    lam[e] = flow[e]/3600/(vfree[e]/(1 + .6*util[e]**3));   // Fahrzeuge je Meter und Richtung zur Spitzenstunde
+  }
+  const GC = 300, grid = new Map(), gk = (ix,iz) => ix*100003 + iz;
+  for(let e=0;e<M;e++){ if(lam[e] <= 0) continue; const k = gk(Math.floor(((NX[eFrom[e]]+NX[eTo[e]])/2+HX)/GC), Math.floor(((NZ[eFrom[e]]+NZ[eTo[e]])/2+HZ)/GC));
+    if(!grid.has(k)) grid.set(k, []); grid.get(k).push(e); }
+  const V = [], palette = C.car.map(c => new THREE.Color(c)), tau = Math.PI*2;
+  const d = new THREE.Object3D(), up = new THREE.Matrix4().makeTranslation(-.2,.95,0), m = new THREE.Matrix4(), ds = new THREE.Object3D();
+  const mid = e => [(NX[eFrom[e]]+NX[eTo[e]])/2, (NZ[eFrom[e]]+NZ[eTo[e]])/2];
+  const remove = i => { const last = V.pop(); if(i < V.length){ V[i] = last; bodies.setColorAt(i, last.col); } };
+  let expected = 0, shown = 0;
+  function rebalance(cx, cz, R, f){
+    const cand = [], cum = []; let sum = 0;
+    for(let ix = Math.floor((cx-R+HX)/GC); ix <= Math.floor((cx+R+HX)/GC); ix++) for(let iz = Math.floor((cz-R+HZ)/GC); iz <= Math.floor((cz+R+HZ)/GC); iz++)
+      for(const e of grid.get(gk(ix,iz)) || []){ const [x,z] = mid(e); if((x-cx)**2 + (z-cz)**2 < R*R){ sum += lam[e]*eLen[e]; cand.push(e); cum.push(sum); } }
+    expected = sum*f; const target = Math.min(VMAX, Math.round(expected));
+    for(let i=V.length-1;i>=0;i--){ const [x,z] = mid(V[i].e); if((x-cx)**2 + (z-cz)**2 > (R*1.1)**2) remove(i); }
+    while(V.length < target && cand.length){
+      let lo = 0, hi = cand.length-1, r = Math.random()*sum; while(lo < hi){ const md = (lo+hi) >> 1; if(cum[md] < r) lo = md+1; else hi = md; }
+      const e = cand[lo], v = {e, s:Math.random()*eLen[e], hdg:Math.atan2(-uz[e], ux[e]), col:palette[Math.floor(Math.random()*palette.length)]};
+      V.push(v); bodies.setColorAt(V.length-1, v.col);
+    }
+    while(V.length > target) remove(V.length-1);
+    if(bodies.instanceColor) bodies.instanceColor.needsUpdate = true;
+    bodies.count = cabins.count = shadows.count = V.length; shown = V.length;
+  }
+  function next(e){   // am Knoten weiter: Abbiegeanteile folgen den Verkehrsmengen der abgehenden Kanten
+    const n = eTo[e]; let tot = 0; const opts = out[n].filter(k => eTo[k] !== eFrom[e]);
+    if(!opts.length) return out[n].find(k => eTo[k] === eFrom[e]) ?? e;
+    for(const k of opts) tot += flow[k] + 1; let r = Math.random()*tot;
+    for(const k of opts){ r -= flow[k] + 1; if(r <= 0) return k; } return opts[opts.length-1];
+  }
+  function update(dt, sc, f, shadowOpacity){   // sc: Symbolgröße; f: Tagesgang (Stau wächst mit der Auslastung)
+    shMat.opacity = shadowOpacity;
+    for(let i=0;i<V.length;i++){
+      const v = V[i]; let e = v.e; v.s += (vfree[e]/(1 + .6*(util[e]*f)**3))*dt;
+      while(v.s >= eLen[e]){ v.s -= eLen[e]; e = next(e); }
+      v.e = e;
+      const target = Math.atan2(-uz[e], ux[e]); let diff = ((target - v.hdg + Math.PI) % tau + tau) % tau - Math.PI; v.hdg += diff*Math.min(1, dt*8);
+      const a = eFrom[e], o = eW[e]*.22, x = NX[a] + ux[e]*v.s - uz[e]*o, z = NZ[a] + uz[e]*v.s + ux[e]*o;
+      d.position.set(x, .3 + .55*sc, z); d.rotation.set(0, v.hdg, 0); d.scale.setScalar(sc); d.updateMatrix();
+      bodies.setMatrixAt(i, d.matrix); cabins.setMatrixAt(i, m.multiplyMatrices(d.matrix, up));
+      ds.position.set(x + SH.x*1.3*sc, .22, z + SH.y*1.3*sc); ds.rotation.set(0, v.hdg, 0); ds.scale.set(5.2*sc, 1, 2.6*sc); ds.updateMatrix(); shadows.setMatrixAt(i, ds.matrix);
+    }
+    bodies.instanceMatrix.needsUpdate = cabins.instanceMatrix.needsUpdate = shadows.instanceMatrix.needsUpdate = true;
+  }
+  return {group, rebalance, update, info: () => ({shown, expected})};
+}
+
+/* ---------- Tag: Zeit, Tagesgang des Verkehrs, Wetter ---------- */
+const sim = {t:5.5*3600, playing:false, speed:120, dragging:false};   // Sekunden seit 0 Uhr
+const smooth = THREE.MathUtils.smoothstep;
+const lerpKeys = (keys, h) => { for(let i=1;i<keys.length;i++){ if(h <= keys[i][0]){ const [h0,v0] = keys[i-1], [h1,v1] = keys[i]; return v0 + (v1-v0)*(h-h0)/(h1-h0); } } return keys[keys.length-1][1]; };
+// Tagesgang des Verkehrs (Demo-Vorgabe): 6 bis 8 Uhr sehr viel, bis 12 Uhr weniger, bis 17 Uhr wieder mehr, bis 19 Uhr weniger, ab 22 Uhr sehr wenig
+const TRAFFIC_KEYS = [[0,.06],[4,.05],[5,.18],[6,1],[8,1],[12,.45],[17,1],[19,.6],[22,.08],[24,.06]];
+const trafficAt = h => lerpKeys(TRAFFIC_KEYS, h);
+// Wetter (Demo-Vorgabe). Zwischen den Vorgaben gilt normales Wetter; 0 bis 6 Uhr ist nicht vorgegeben und ebenfalls normal (Annahme).
+// Regen hat eine Stärke (0 bis 1); sie färbt den Wetterstreifen grauer und dunkler und ist noch eine Annahme der Demo.
+const WEATHER = [[0,6,'normal'],[6,9,'snow'],[9,12,'normal'],[12,14,'sun'],[14,16,'rain',.5],[16,18,'rain',1],[18,22,'normal'],[22,24,'snow']];
+const WX_LABEL = {normal:'Clear', sun:'Sunny', rain:'Rain', snow:'Snow'};
+let wxForce = null;   // von Hand gewähltes Wetter (Auto = null: Vorgabe der Demo)
+function weatherWeights(h){
+  if(wxForce) return {normal:0, sun:0, rain:0, snow:0, [wxForce]:1};
+  const w = {sun:0, rain:0, snow:0}, F = .17;   // Übergänge dauern rund 20 Minuten
+  for(const [a,b,k] of WEATHER) if(k !== 'normal') w[k] += smooth(h, a-F, a+F) * (1 - smooth(h, b-F, b+F));
+  return {...w, normal:Math.max(0, 1 - w.sun - w.rain - w.snow)};
+}
+const nightAt = h => h < 5 ? 1 : h < 7 ? 1 - smooth(h,5,7) : h < 18 ? 0 : h < 21 ? smooth(h,18,21) : 1;   // Tag/Nacht (Annahme: ein Herbsttag)
+// Wirkung des Wetters auf die Karte: Sonne = warmer Schein und härtere Schatten, Regen = weniger gesättigt, Schnee = weniger Kontrast
+const WXP = {
+  normal:{sat:1,   con:1,   br:1,    tint:[1,1,1],        sun:2.0, hemi:1.35, sh:.18},
+  sun:   {sat:1.12,con:1.08,br:1.04, tint:[1.05,1,.92],   sun:2.7, hemi:1.1,  sh:.34},
+  rain:  {sat:.55, con:1,   br:.90,  tint:[.96,.98,1.02], sun:.8,  hemi:1.4,  sh:.05},
+  snow:  {sat:.75, con:.72, br:1.06, tint:[.98,1,1.04],   sun:1.0, hemi:1.6,  sh:.07} };
+const _bg = new THREE.Color();
+function applyEnvironment(h){
+  const w = weatherWeights(h), n = nightAt(h), keys = ['normal','sun','rain','snow'];
+  const mix = key => keys.reduce((a,k) => a + w[k]*WXP[k][key], 0), mixT = i => keys.reduce((a,k) => a + w[k]*WXP[k].tint[i], 0);
+  const br = mix('br')*(1 - .45*n);
+  WX.uSat.value = mix('sat'); WX.uCon.value = mix('con');
+  WX.uTint.value.set(mixT(0)*(1-.25*n)*br, mixT(1)*(1-.14*n)*br, mixT(2)*(1+.05*n)*br);
+  sun.intensity = mix('sun')*(1 - .9*n); hemi.intensity = mix('hemi')*(1 - .55*n); shadowCatcher.material.opacity = mix('sh')*(1 - n);
+  _bg.set(C.bg).lerp(new THREE.Color(0x3a4054), n);
+  scene.background.copy(_bg); bgPlane.material.color.copy(_bg);
+  const hex = '#' + _bg.getHexString(); washEl.style.background = hex; document.body.style.background = hex;
+  return {w, n, shadowOpacity:shadowCatcher.material.opacity};
+}
+
+/* Wetteranzeige */
+const WX_ICON = {
+  normal:'<path d="M7 18h9a4 4 0 0 0 .5-7.97A5.5 5.5 0 0 0 6 11.5 3.25 3.25 0 0 0 7 18z"/>',
+  sun:'<circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4"/>',
+  rain:'<path d="M7 14h9a4 4 0 0 0 .5-7.97A5.5 5.5 0 0 0 6 7.5 3.25 3.25 0 0 0 7 14z"/><path d="M8 17l-1 3M12 17l-1 3M16 17l-1 3"/>',
+  snow:'<path d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9M9.5 4.5L12 6.5l2.5-2M9.5 19.5L12 17.5l2.5 2"/>' };
+const wxEl = document.getElementById('wx'), wxIcon = wxEl.querySelector('svg'), dayEl = document.getElementById('day'); let wxShown = '';
+// Kleines Auswahlmenü an einem Icon-Button: Pfeiltasten, Enter, Escape, Klick daneben schließt.
+function iconMenu(btn, items, current, pick){
+  const m = document.createElement('div'); m.className = 'menu'; m.hidden = true; m.setAttribute('role', 'menu'); document.body.appendChild(m);
+  const close = (focus = true) => { m.hidden = true; btn.setAttribute('aria-expanded', 'false'); if(focus) btn.focus(); };
+  const render = () => { m.textContent = ''; for(const it of items){
+    if(it.grp){ const g = document.createElement('div'); g.className = 'grp'; m.append(g); }
+    if(it.date){ const l = document.createElement('label'), inp = document.createElement('input'); inp.type = 'date'; inp.setAttribute('aria-label', 'Pick a date'); if(String(current()).startsWith('date:')) inp.value = String(current()).slice(5);
+      inp.addEventListener('change', () => { if(inp.value){ pick('date:' + inp.value); close(); } }); m.append(inp); continue; }
+    const b = document.createElement('button'); b.type = 'button'; b.setAttribute('role', 'menuitemradio'); b.setAttribute('aria-checked', it.v === current()); b.disabled = !!it.off; if(it.sub) b.className = 'sub';
+    b.innerHTML = (it.icon ? `<svg viewBox="0 0 24 24" aria-hidden="true">${it.icon}</svg>` : '') + '<span></span>' + (it.note ? '<small></small>' : ''); b.querySelector('span').textContent = it.l; if(it.note) b.querySelector('small').textContent = it.note;
+    b.addEventListener('click', () => { pick(it.v); close(); }); m.append(b); } };
+  const open = () => { document.querySelectorAll('.menu').forEach(x => { x.hidden = true; }); render(); const r = btn.getBoundingClientRect(); m.style.left = Math.min(innerWidth - 210, r.left) + 'px'; m.style.top = Math.min(r.bottom + 6, innerHeight - m.offsetHeight - 8) + 'px'; m.hidden = false; btn.setAttribute('aria-expanded', 'true'); (m.querySelector('[aria-checked="true"]') || m.querySelector('button:not(:disabled)')).focus(); };
+  btn.addEventListener('click', e => { e.stopPropagation(); if(!m.hidden) close(false); else open(); });
+  m.addEventListener('keydown', e => { const bs = [...m.querySelectorAll('button:not(:disabled)')], i = bs.indexOf(document.activeElement);
+    if(e.key === 'Escape'){ e.preventDefault(); e.stopPropagation(); close(); } else if(e.key === 'ArrowDown'){ e.preventDefault(); bs[(i + 1) % bs.length].focus(); } else if(e.key === 'ArrowUp'){ e.preventDefault(); bs[(i - 1 + bs.length) % bs.length].focus(); } });
+  addEventListener('pointerdown', e => { if(!m.hidden && !m.contains(e.target) && !btn.contains(e.target)) close(false); });
+  return {open, close, isOpen: () => !m.hidden};
+}
+const AUTO_ICON = '<path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v4h-4"/>';
+function updateWxUi(){ wxEl.classList.toggle('forced', !!wxForce); wxEl.title = `Weather: ${WX_LABEL[wxShown || 'normal']}${wxForce ? ' (set by hand)' : ' (follows the demo schedule)'}`; }
+const setWeather = v => { wxForce = v; wxShown = ''; updateWxUi(); drawTimeline(); if(typeof saveLens === 'function') saveLens(); };
+const wxMenu = iconMenu(wxEl, [{v:null, l:'Auto', note:'demo schedule', icon:AUTO_ICON}, ...['normal', 'sun', 'rain', 'snow'].map(k => ({v:k, l:WX_LABEL[k], icon:WX_ICON[k]}))], () => wxForce, setWeather);
+// Tag: das Modell enthält nur einen typischen Werktag; die anderen Tage lassen sich wählen (gehören zur Lens), zeigen aber noch diesen Werktag
+const DAY_LABEL = {weekdays:'Weekdays', mon:'Monday', tue:'Tuesday', wed:'Wednesday', thu:'Thursday', fri:'Friday', weekend:'Weekend', sat:'Saturday', sun:'Sunday', holiday:'Holiday'};
+let dayVal = 'weekdays';
+const dayItem = (v, sub) => ({v, l:DAY_LABEL[v], sub, note: v === 'weekdays' ? '' : 'no data'});
+const dayText = v => String(v).startsWith('date:') ? new Date(String(v).slice(5) + 'T12:00').toLocaleDateString('en-GB', {weekday:'short', day:'numeric', month:'short', year:'numeric'}) : DAY_LABEL[v] || 'Weekdays';
+function updateDayUi(){ dayEl.classList.toggle('forced', dayVal !== 'weekdays'); dayEl.title = `Day: ${dayText(dayVal)} (A)` + (dayVal !== 'weekdays' ? '. No timetable for this day yet, the typical weekday is shown.' : ''); }
+const setDay = v => { dayVal = v; updateDayUi(); if(typeof saveLens === 'function') saveLens(); };
+const dayMenu = iconMenu(dayEl, [dayItem('weekdays'), ...['mon', 'tue', 'wed', 'thu', 'fri'].map(v => dayItem(v, true)), {grp:true, ...dayItem('weekend')}, dayItem('sat', true), dayItem('sun', true), {grp:true, ...dayItem('holiday')}, {grp:true, date:true}], () => dayVal, setDay);
+updateDayUi();
+function showWeather(w){
+  const top = Object.keys(w).reduce((a,k) => w[k] > w[a] ? k : a, 'normal');
+  if(top !== wxShown){ wxShown = top; wxIcon.innerHTML = WX_ICON[top]; updateWxUi(); }
+}
+
+/* Zeitstrahl: Abspielen/Pause, Tempo, Spuren für Wetter, Verkehr und U4 */
+const pad2 = n => String(n).padStart(2,'0');
+const clockText = t => `${pad2(Math.floor(t/3600)%24)}:${pad2(Math.floor(t/60)%60)}`;
+const tlCanvas = document.getElementById('tl-canvas'), playheadEl = document.getElementById('playhead'), clockEl = document.getElementById('clock');
+// Wetterstreifen: Himmelblau = klar, Sonnengelb = sonnig, Weiß = Schnee, Grau = Regen (je stärker, desto dunkler), Schwarz = Gewitter (noch ohne Daten)
+const WX_COLOR = {normal:'#87ceeb', sun:'#ffc933', snow:'#ffffff', storm:'#111318'}, rainColor = i => { const a = [180,184,192], b = [58,63,74]; return `rgb(${a.map((v, k) => Math.round(v + (b[k]-v)*i)).join(',')})`; };
+const RULER = 26;
+// Zeitachse: sichtbarer Ausschnitt in Stunden. Alles (Lineal, Verkehr, Spuren, Spielkopf, Klicken) rechnet damit; Zoom macht die Stunden breiter.
+const tv = {a:0, b:24}; let trafficOn = true;
+const tvx = (hh, w) => (hh - tv.a)/(tv.b - tv.a)*w, tvh = (x, w) => tv.a + x/w*(tv.b - tv.a);
+const tickSteps = () => { const sp = tv.b - tv.a; return sp > 12 ? [1, 3] : sp > 6 ? [.5, 1] : sp > 3 ? [.25, 1] : sp > 1.5 ? [1/12, .5] : [1/12, .25]; };   // klein, groß (in Stunden)
+const hhmm = hh => `${String(Math.floor(hh + 1e-6)).padStart(2, '0')}:${String(Math.round((hh % 1)*60) % 60).padStart(2, '0')}`;
+let tlExtra = null;   // weitere Zeichenroutine (U4-Spur), wird später ergänzt
+function drawTimeline(){
+  const dpr = devicePixelRatio || 1, w = tlCanvas.clientWidth, h = tlCanvas.clientHeight; if(!w) return;
+  tlCanvas.width = w*dpr; tlCanvas.height = h*dpr; const g = tlCanvas.getContext('2d'); g.scale(dpr, dpr);
+  const X = hh => tvx(hh, w), laneY = i => RULER + i*32;
+  g.font = '11px -apple-system,BlinkMacSystemFont,Segoe UI,Inter,sans-serif'; g.textBaseline = 'middle';
+  { const [mn, mj] = tickSteps(), eps = 1e-6;
+    for(let k = Math.floor(tv.a/mn); k*mn <= tv.b + eps; k++){ const hh = k*mn, x = Math.round(X(hh)) + .5; if(x < -1 || x > w + 1) continue; const major = Math.abs(hh/mj - Math.round(hh/mj)) < eps;
+      g.strokeStyle = major ? '#c9cee0' : '#e1e4ee'; g.beginPath(); g.moveTo(x, major ? 4 : 12); g.lineTo(x, h); g.stroke();
+      if(major && hh < 24 - eps){ g.fillStyle = '#6b7390'; g.fillText(mj >= 1 ? pad2(Math.round(hh)) : hhmm(hh), x + 4, 9); } } }
+  // Wetter: schmaler Streifen unter den Uhrzeiten; ein von Hand gewähltes Wetter gilt für den ganzen Tag
+  for(const [a,b,k,i] of (wxForce ? [[0,24,wxForce,.7]] : WEATHER)){ g.fillStyle = k === 'rain' ? rainColor(i ?? 1) : WX_COLOR[k]; g.fillRect(X(a), RULER - 6, X(b) - X(a), 4); }
+  g.strokeStyle = 'rgba(29,34,54,.14)'; g.lineWidth = 1; g.strokeRect(.5, RULER - 5.5, w - 1, 4);
+  // Verkehr: Höhe und Farbe zeigen den Tagesgang (Farbe nach derselben Skala wie die Auslastung); bei ausgeblendetem Verkehr auf der Karte fehlt die Spur
+  if(trafficOn){ const y = laneY(0), c = new THREE.Color();
+    for(let x=0; x<w; x+=2){ const f = trafficAt(tvh(x, w)); loadColor(f, c); g.fillStyle = '#' + c.getHexString(); const bh = 3 + f*25; g.fillRect(x, y + 28 - bh, 2, bh); } }
+  if(tlExtra) tlExtra(g, X, laneY(1), w);
+}
+// Abspielen: kein Autostart. Pause, dann ein Pfeil: 1 Stunde = 1 Stunde, zwei: 1 Stunde = 1 Minute, drei: 1 Stunde = 30 Sekunden. Erneut klicken hält an.
+const SPEEDS = [{s:1, n:1, t:'1 h = 1 h (real time)'}, {s:60, n:2, t:'1 h = 1 min'}, {s:120, n:3, t:'1 h = 30 s'}], speedBox = document.getElementById('speed');
+{ const b = document.createElement('button'); b.type = 'button'; b.className = 'sp'; b.id = 'pause'; b.title = 'Pause (Space)'; b.setAttribute('aria-label', 'Pause');
+  b.innerHTML = '<svg viewBox="0 0 10 12" width="10" height="12" aria-hidden="true"><path d="M0 0h3.5v12H0zM6.5 0H10v12H6.5z"/></svg>'; b.addEventListener('click', () => setPlaying(false)); speedBox.append(b); }
+for(const o of SPEEDS){
+  const b = document.createElement('button'); b.type = 'button'; b.className = 'sp'; b.dataset.s = o.s; b.title = o.t + ' (click again to pause)'; b.setAttribute('aria-label', 'Play, ' + o.t);
+  b.innerHTML = `<svg viewBox="0 0 ${8 + 9*(o.n-1)} 12" width="${8 + 9*(o.n-1)}" height="12" aria-hidden="true">` + Array.from({length:o.n}, (_, i) => `<path d="M${i*9} 0l8 6-8 6z"/>`).join('') + '</svg>';
+  b.addEventListener('click', () => { if(sim.playing && sim.speed === o.s) setPlaying(false); else { sim.speed = o.s; setPlaying(true); } });
+  speedBox.append(b);
+}
+function setPlaying(p){ sim.playing = p; speedBox.querySelectorAll('.sp').forEach(b => { const on = b.id === 'pause' ? !p : p && +b.dataset.s === sim.speed; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); }); }
+setPlaying(false);
+const trackEl = document.getElementById('tl-track');
+const seek = e => { const r = trackEl.getBoundingClientRect(); sim.t = THREE.MathUtils.clamp(tv.a + (e.clientX - r.left)/r.width*(tv.b - tv.a), 0, 23.9999)*3600; };
+trackEl.addEventListener('pointerdown', e => { sim.dragging = true; trackEl.setPointerCapture(e.pointerId); seek(e); });
+trackEl.addEventListener('pointermove', e => { if(sim.dragging) seek(e); });
+trackEl.addEventListener('pointerup', () => sim.dragging = false); trackEl.addEventListener('pointercancel', () => sim.dragging = false);
+const tlEl = document.getElementById('timeline');
+let tlMinH = () => 0, tlBtnSync = () => {}, toggleTimeline = () => {};
+const layoutTimeline = () => { tlBtnSync(); document.documentElement.style.setProperty('--tl', tlEl.offsetHeight + 'px'); drawTimeline(); drawLaneCanvas(); };
+addEventListener('resize', layoutTimeline);
+
+/* ---------- Steuerung ---------- */
+const controls = new OrbitControls(cam, renderer.domElement);
+controls.target.set(0,0,0);
+cam.position.set(-250,195,250);
+// Startzoom: so, dass alle vier Ecken des Gebiets ins Bild passen (aus der echten Projektion, nicht geschätzt)
+cam.zoom = 1; cam.updateProjectionMatrix(); controls.update(); cam.updateMatrixWorld();
+let reach = 0; const corner = new THREE.Vector3();
+for(const sx of [-1,1]) for(const sz of [-1,1]){ corner.set(sx*HX, 0, sz*HZ).project(cam); reach = Math.max(reach, Math.abs(corner.x), Math.abs(corner.y)); }
+const fitZoom = .92/reach;
+cam.zoom = fitZoom; cam.updateProjectionMatrix();
+Object.assign(controls, {enableDamping:true, dampingFactor:.08, screenSpacePanning:false,
+  minPolarAngle:.6, maxPolarAngle:1.2, minZoom:fitZoom*.35, maxZoom:8});
+controls.addEventListener('change', () => {
+  const t = controls.target;
+  const dx = THREE.MathUtils.clamp(t.x,-(HX+4000),HX+4000)-t.x, dz = THREE.MathUtils.clamp(t.z,-(HZ+4000),HZ+4000)-t.z;
+  if(dx||dz){ t.x+=dx; t.z+=dz; cam.position.x+=dx; cam.position.z+=dz; }
+});
+
+/* ---------- Linien ---------- */
+// Format: CITY.pois = alle Haltestellen, CITY.lines = [{n, m, s:[Index in pois], A, B:{arr, dep je Halt von s}, trips:[{d, f, t, t0}]}].
+// Ohne CITY.lines (alte Modelle, Demo): eine Linie über alle pois, Fahrplan aus CITY.schedule oder Demo-Takt.
+const SRC = CITY.lines || [{n:CITY.meta.line || 'Line', m:'Metro', s:CITY.pois.map((_, i) => i), A:CITY.schedule?.A, B:CITY.schedule?.B, trips:CITY.schedule?.trips}];
+const MULTI = SRC.length > 1;
+const hashOf = s => { let h = 2166136261; for(const ch of s) h = Math.imul(h ^ ch.charCodeAt(0), 16777619); return h >>> 0; };
+const MODES = {Metro:{hue:228, s:85, l:50, w:1, wag:3, z:5}, Train:{hue:150, s:70, l:36, w:.8, wag:3, z:4}, Tram:{hue:330, s:70, l:48, w:.6, wag:2, z:3}, Ferry:{hue:190, s:75, l:40, w:.6, wag:2, z:2}, Bus:{hue:265, s:30, l:55, w:.45, wag:1, z:1}};
+const MODE_DEF = {hue:30, s:60, l:48, w:.5, wag:1, z:0};
+const DWELL = 30, V_RUN = 12, PENALTY = 25;   // Demo ohne Fahrplan: Haltezeit s, Reisegeschwindigkeit m/s, Anfahren/Bremsen s
+
+/* Linie im Mini-Metro-Stil: Stationen bleiben an ihrem Ort, dazwischen nur 0°/45°/90° */
+function buildRoute(stops){
+  const pts = [{x:stops[0].x, z:stops[0].z}];
+  let heading = null;  // Richtung des letzten Stücks, damit die Linie möglichst geradeaus bleibt
+  const unit = (a,b) => { const dx=b.x-a.x, dz=b.z-a.z, l=Math.hypot(dx,dz)||1; return {x:dx/l, z:dz/l}; };
+  for(let i=1;i<stops.length;i++){
+    const a = pts[pts.length-1], b = stops[i];
+    const dx=b.x-a.x, dz=b.z-a.z, sx=Math.sign(dx), sz=Math.sign(dz), d=Math.min(Math.abs(dx),Math.abs(dz));
+    const diag = {x:a.x+sx*d, z:a.z+sz*d}, straight = {x:Math.abs(dx)>Math.abs(dz) ? a.x+dx-sx*d : a.x, z:Math.abs(dx)>Math.abs(dz) ? a.z : a.z+dz-sz*d};
+    const opts = d < 1 ? [[{x:b.x,z:b.z}]] : [[diag, {x:b.x,z:b.z}], [straight, {x:b.x,z:b.z}]];
+    let best = opts[0];
+    if(heading && opts.length > 1){ const score = o => { const u = unit(a, o[0]); return u.x*heading.x + u.z*heading.z; }; best = score(opts[1]) > score(opts[0]) ? opts[1] : opts[0]; }
+    for(const p of best){ const prev = pts[pts.length-1]; if(Math.hypot(p.x-prev.x, p.z-prev.z) > .5){ heading = unit(prev, p); pts.push({x:p.x, z:p.z}); } }
+  }
+  return pts.map(p => new THREE.Vector3(p.x, 0, p.z));
+}
+let hotLine = null;   // Linie unter der Maus in der Zeitleiste
+let viewDirty = 1;   // erhöht sich, wenn sich Linien, Namen oder Hover ändern (siehe viewKey)
+const LINES = SRC.map((L, li) => {
+  const st = L.s.map(i => CITY.pois[i]), mode = MODES[L.m] || MODE_DEF;
+  const hue = (mode.hue + (hashOf(L.n || '') % 50) - 25 + 360) % 360;
+  return {li, name:L.n, mode, st, NS:st.length, src:L, S:(L.A && L.B && L.trips) ? L : null, cache:new Map(),
+    color: MULTI ? `hsl(${hue} ${mode.s}% ${mode.l}%)` : '#1f2bff'};
+});
+/* Verlauf der Linien: schematisch (0°/45°/90° zwischen den Haltestellen) oder der tatsächliche Fahrweg aus dem Modell (L.src.g) */
+const realRoute = g => { const r = []; for(let i=0;i<g.length;i+=2) r.push(new THREE.Vector3(g[i], 0, g[i+1])); return r; };
+function stationsAlong(route, routeS, st, real){
+  if(!real) return st.map(p => routeS[Math.max(0, route.findIndex(v => Math.hypot(v.x-p.x, v.z-p.z) < 1))]);
+  const out = []; let from = 0, sPrev = 0;   // je Halt der nächste Punkt auf dem Fahrweg, nie zurück (kleine Gewichtung gegen Sprünge bei Schleifen)
+  for(const p of st){
+    let best = Infinity, bs = sPrev;
+    for(let j=Math.max(0, from-1); j<route.length-1; j++){
+      const a = route[j], b = route[j+1], dx = b.x-a.x, dz = b.z-a.z, l2 = dx*dx + dz*dz;
+      let t = l2 ? ((p.x-a.x)*dx + (p.z-a.z)*dz)/l2 : 0; t = Math.max(0, Math.min(1, t));
+      const s = routeS[j] + t*Math.sqrt(l2); if(s < sPrev) continue;
+      const d = Math.hypot(p.x-(a.x+t*dx), p.z-(a.z+t*dz)) + .02*(s - sPrev);
+      if(d < best){ best = d; bs = s; from = j; }
+    }
+    sPrev = bs; out.push(bs);
+  }
+  return out;
+}
+let geomReal = LINES.some(L => L.src.g);   // echter Fahrweg, wenn das Modell ihn mitbringt
+function applyGeom(){
+  for(const L of LINES){
+    const real = geomReal && !!L.src.g;
+    L.route = real ? realRoute(L.src.g) : buildRoute(L.st);
+    L.routeS = [0]; for(let i=1;i<L.route.length;i++) L.routeS.push(L.routeS[i-1] + L.route[i].distanceTo(L.route[i-1]));
+    L.LEN = L.routeS[L.routeS.length-1];
+    L.stnS = stationsAlong(L.route, L.routeS, L.st, real);
+    L.runT = []; for(let i=0;i<L.NS-1;i++) L.runT.push((L.stnS[i+1]-L.stnS[i])/V_RUN + PENALTY);
+    L.cache.clear();
+    L.sp = L.route.map(() => ({x:0, y:0}));
+  }
+  viewDirty++;
+}
+applyGeom();
+/* Ankunft und Abfahrt je Halt von Halt f bis Halt t (Indizes der Linie), relativ zum Start */
+function tripTimes(L, dirA, f = dirA ? 0 : L.NS-1, t = dirA ? L.NS-1 : 0){
+  const idx = []; if(f <= t) for(let i=f;i<=t;i++) idx.push(i); else for(let i=f;i>=t;i--) idx.push(i);
+  const arr = [0], dep = [0];
+  if(L.S){
+    const S = L.S[dirA ? 'A' : 'B'], d0 = S.dep[idx[0]];
+    for(let k=1;k<idx.length;k++){ arr[k] = Math.max(S.arr[idx[k]] - d0, dep[k-1] + 1); dep[k] = Math.max(S.dep[idx[k]] - d0, arr[k] + (k < idx.length-1 ? 20 : 0)); }   // mindestens 20 s Halt, damit der Zug sichtbar anhält
+  } else for(let k=1;k<idx.length;k++){ arr[k] = dep[k-1] + L.runT[Math.min(idx[k-1], idx[k])]; dep[k] = arr[k] + DWELL; }
+  return {idx, arr, dep, total:dep[idx.length-1]};
+}
+const ttFor = (L, dirA, f, t) => { const k = (dirA ? 'A' : 'B') + f + '-' + t; if(!L.cache.has(k)) L.cache.set(k, tripTimes(L, dirA, f, t)); return L.cache.get(k); };
+const HEADWAY = [[0,20],[5,10],[6,5],[9,10],[15,5],[19,10],[22,20]];   // ab Stunde: Takt in Minuten (Annahme, nur ohne Fahrplan im Modell)
+const hwAt = h => { let m = 20; for(const [h0,v] of HEADWAY) if(h >= h0) m = v; return m; };
+const TRIPS = [];
+for(const L of LINES){
+  if(L.S){
+    for(const tr of L.S.trips){ if(tr.f >= L.NS || tr.t >= L.NS) continue; const T = ttFor(L, tr.d === 'A', tr.f, tr.t);
+      for(const t0 of [tr.t0, tr.t0 - 86400, tr.t0 + 86400]) if(t0 >= -T.total && t0 < 86400) TRIPS.push({id:L.li + '-' + TRIPS.length, line:L, dir:tr.d, t0, T}); }   // Fahrten über Mitternacht erscheinen auch am Tagesanfang
+  } else if(!L.src.nt) for(const [dir, offset] of [['A',0],['B',150]]){ const T = ttFor(L, dir === 'A'); let t = -3600 + offset; while(t < 86400){ TRIPS.push({id:L.li + '-' + TRIPS.length, line:L, dir, t0:t, T}); t += hwAt((((t/3600) % 24) + 24) % 24)*60; } }
+}
+
+/* ---------- POIs: Punkt am Boden, Namensschild nur wo Platz ist (oder beim Darüberfahren) ---------- */
+const poiHost = document.getElementById('pois'), v3 = new THREE.Vector3();
+const poiUse = CITY.pois.map(() => 0); for(const L of SRC) for(const i of L.s) poiUse[i]++;
+const pois = CITY.pois.map((p, i) => {
+  const el = document.createElement('div'); el.className = 'poi';
+  el.innerHTML = '<div class="chip"></div><div class="dot"></div>';   // Namen aus hochgeladenen Modellen: nie als HTML einsetzen
+  el.querySelector('.chip').textContent = p.n; el.querySelector('.dot').title = p.n;
+  const poi = {p, el, pos:new THREE.Vector3(p.x, 0, p.z), hover:false, vis:true, on:false, w:p.n.length*7.6+28, use:poiUse[i], live:poiUse[i]};
+  el.querySelector('.dot').addEventListener('mouseenter', () => { poi.hover = true; viewDirty++; });
+  el.querySelector('.dot').addEventListener('mouseleave', () => { poi.hover = false; viewDirty++; });
+  if(MULTI) el.querySelector('.dot').style.cssText = 'left:-6px;top:-6px;width:12px;height:12px;border-width:3px';
+  poiHost.appendChild(el); return poi;
+});
+const labelOrder = pois.map((_, i) => i).sort((a, b) => pois[b].use - pois[a].use || a - b);   // Umsteigepunkte zuerst beschriften
+
+/* ---------- Linien zeichnen ---------- */
+const SVG = 'http://www.w3.org/2000/svg', svg = document.getElementById('line');
+const mk = (tag, attrs) => { const e = document.createElementNS(SVG, tag); for(const k in attrs) e.setAttribute(k, attrs[k]); svg.appendChild(e); return e; };
+const lineStyle = {fill:'none', 'stroke-linejoin':'round', 'stroke-linecap':'round'};
+for(const L of [...LINES].sort((a, b) => a.mode.z - b.mode.z)){   // Busse unten, U-Bahn oben
+  L.casing = mk('polyline', {...lineStyle, stroke:'#ffffff', 'stroke-opacity':MULTI ? .75 : .9});
+  L.stroke = mk('polyline', {...lineStyle, stroke:L.color});
+  if(!MULTI){ L.capA = mk('line', {stroke:L.color, 'stroke-linecap':'butt'}); L.capB = mk('line', {stroke:L.color, 'stroke-linecap':'butt'}); }
+}
+function placeLine(){
+  const w = innerWidth, h = innerHeight, k = THREE.MathUtils.smoothstep(cam.zoom, fitZoom, .6);
+  for(const L of LINES){
+    if(L.off) continue;
+    const sp = L.sp, lw = (6 + 9*k) * (MULTI ? L.mode.w*.7 + .15 : 1) * (hotLine === L ? 1.7 : 1), dim = (hotLine && hotLine !== L ? .3 : 1)*(L.alpha ?? 1);   // Linie unter der Maus in der Zeitleiste hervorheben
+    L.route.forEach((p,i) => { v3.copy(p).project(cam); sp[i].x = (v3.x*.5+.5)*w; sp[i].y = (-v3.y*.5+.5)*h; });
+    const pts = sp.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+    const is = show.alerts ? issueNow(L) : '';
+    L.casing.setAttribute('points', pts); L.casing.setAttribute('stroke-width', lw + (is ? 9 : MULTI ? 3 : 6)); L.casing.setAttribute('stroke-opacity', is ? dim : (MULTI ? .75 : .9) * dim); L.casing.setAttribute('stroke', is === 'over' ? '#e03a31' : is === 'cold' ? '#3b82f6' : '#ffffff');
+    L.casing.setAttribute('stroke-dasharray', is === 'cold' ? '2 9' : '');
+    L.stroke.setAttribute('points', pts); L.stroke.setAttribute('stroke-width', lw); L.stroke.setAttribute('stroke-opacity', dim);
+    if(L.capA){   // Abschlussbalken quer zur Linie an beiden Enden (nur bei einer Linie)
+      const cap = (el, a, b) => { const dx=a.x-b.x, dy=a.y-b.y, l=Math.hypot(dx,dy)||1, nx=-dy/l*(lw*1.1+8), ny=dx/l*(lw*1.1+8);
+        el.setAttribute('x1', a.x+nx); el.setAttribute('y1', a.y+ny); el.setAttribute('x2', a.x-nx); el.setAttribute('y2', a.y-ny); el.setAttribute('stroke-width', Math.max(4, lw*.45)); };
+      cap(L.capA, sp[0], sp[1]); cap(L.capB, sp[sp.length-1], sp[sp.length-2]);
+    }
+  }
+}
+function placePois(){
+  const w = innerWidth, h = innerHeight, shown = [];
+  for(const o of pois){
+    v3.copy(o.pos).project(cam);
+    o.sx = (v3.x*.5+.5)*w; o.sy = (-v3.y*.5+.5)*h;
+    const vis = o.live > 0 && o.sx > -80 && o.sx < w+80 && o.sy > -20 && o.sy < h+80;   // Haltestellen ohne sichtbare Linie verschwinden
+    if(vis !== o.vis){ o.vis = vis; o.el.style.display = vis ? '' : 'none'; }
+    if(vis) o.el.style.transform = `translate(${o.sx}px,${o.sy}px)`;
+  }
+  // Schilder nach Wichtigkeit vergeben, solange sie sich nicht überlappen
+  for(const i of labelOrder){
+    const o = pois[i]; if(!o.vis){ if(o.on){ o.on = false; o.el.classList.remove('show'); } continue; }
+    const box = {x0:o.sx-o.w/2, x1:o.sx+o.w/2, y0:o.sy-52, y1:o.sy-20};
+    const free = !shown.some(b => box.x0 < b.x1 && box.x1 > b.x0 && box.y0 < b.y1 && box.y1 > b.y0);
+    const on = o.hover || (show.labels && free && o.sx > -50 && o.sx < w+50 && o.sy > 0 && o.sy < h+50);
+    if(on && free) shown.push(box);
+    if(on !== o.on){ o.on = on; o.el.classList.toggle('show', on); }
+    o.el.style.zIndex = o.hover ? 2 : 1;
+  }
+}
+
+/* ---------- Fahrplan und Wagen im Mini-Metro-Stil ---------- */
+// Ohne Fahrplan im Modell ist Takt und Fahrzeit eine Annahme für die Demo. Die Auslastung der Züge ist immer modelliert, nicht gemessen.
+const MORNING = h => smooth(h,5.5,7)*(1-smooth(h,9,10.5)), EVENING = h => smooth(h,15,16.5)*(1-smooth(h,19,20.5));
+function trainLoad(t, x, dir){   // Auslastung eines Zuges: Tagesgang × Lage auf der Linie (Mitte voller) × Richtung (morgens stadteinwärts, abends stadtauswärts)
+  const h = ((t/3600) % 24 + 24) % 24, spatial = .5 + .5*Math.exp(-(((x-.72)/.30)**2));
+  const dirF = dir === 'A' ? 1 + .22*MORNING(h) - .22*EVENING(h) : 1 - .25*MORNING(h) + .22*EVENING(h);
+  return trafficAt(h)*spatial*dirF*1.15;
+}
+for(const tr of TRIPS) tr.load = trainLoad(tr.t0 + tr.T.total*.55, .7, tr.dir);
+const ease = p => .5 - .5*Math.cos(Math.PI*p);
+function trainStates(t){
+  const res = [];
+  for(const tr of TRIPS){
+    if(tr.line.off) continue;
+    const T = tr.T, tau = t - tr.t0, m = T.idx.length; if(tau < 0 || tau > T.total) continue;
+    const stnS = tr.line.stnS;
+    for(let k=0;k<m;k++){
+      if(tau <= T.dep[k]){ res.push({tr, s:stnS[T.idx[k]], moving:false}); break; }
+      if(k < m-1 && tau < T.arr[k+1]){ const p = (tau-T.dep[k])/(T.arr[k+1]-T.dep[k]); res.push({tr, s:stnS[T.idx[k]] + (stnS[T.idx[k+1]]-stnS[T.idx[k]])*ease(p), moving:true}); break; }
+    }
+  }
+  return res;
+}
+function routeAt(L, s, out){
+  const {route, routeS} = L; s = THREE.MathUtils.clamp(s, 0, L.LEN); let lo = 0, hi = routeS.length-1;
+  while(lo < hi-1){ const m = (lo+hi) >> 1; if(routeS[m] <= s) lo = m; else hi = m; }
+  const l = routeS[hi]-routeS[lo] || 1; return out.copy(route[lo]).lerp(route[hi], (s-routeS[lo])/l);
+}
+const trainsG = mk('g', {}), trainEls = new Map(), _p = new THREE.Vector3(), _q = new THREE.Vector3(), _c = new THREE.Color();
+const toScreen = (v, o) => { _q.copy(v).project(cam); o.x = (_q.x*.5+.5)*innerWidth; o.y = (-_q.y*.5+.5)*innerHeight; return o; };
+const sa = {x:0,y:0}, sb = {x:0,y:0};
+function placeTrains(t){
+  const seen = new Set(), mpp = (2*FRUSTUM*aspect/cam.zoom)/innerWidth, k = THREE.MathUtils.smoothstep(cam.zoom, fitZoom, .6), W = innerWidth, H = innerHeight;
+  const labels = cam.zoom > fitZoom*2.2;
+  for(const st of trainStates(t)){
+    const tr = st.tr, L = tr.line, dirA = tr.dir === 'A', wag = L.mode.wag;
+    seen.add(tr.id);
+    toScreen(routeAt(L, st.s, _p), sa);
+    let el = trainEls.get(tr.id);
+    if(sa.x < -60 || sa.x > W+60 || sa.y < -60 || sa.y > H+60){ if(el) el.g.style.display = 'none'; continue; }   // außerhalb des Bildes nichts zeichnen
+    const load = tr.apc ? tr.apc.lf*(.65 + .35*Math.exp(-(((st.s/(L.LEN || 1) - L.c)/.3)**2))) : trainLoad(t, st.s/(L.LEN || 1), tr.dir), color = '#' + loadColor(load, _c).getHexString();
+    const lw = (6 + 9*k) * (MULTI ? L.mode.w*.7 + .15 : 1), wid = lw*1.5 + 2, len = wid*1.9, dist = (len+3)*mpp, eps = Math.max(30, mpp*8);
+    if(!el){ const g = document.createElementNS(SVG, 'g'); el = {g, w:Array.from({length:wag}, () => { const r = document.createElementNS(SVG, 'rect'); r.setAttribute('stroke', '#ffffff'); r.setAttribute('stroke-width', 2); g.appendChild(r); return r; }), tx:document.createElementNS(SVG, 'text')};
+      el.tx.setAttribute('font-size', 11); el.tx.setAttribute('font-weight', 600); el.tx.setAttribute('fill', '#1d2236'); el.tx.setAttribute('stroke', '#ffffff'); el.tx.setAttribute('stroke-width', 3); el.tx.setAttribute('paint-order', 'stroke'); el.tx.setAttribute('text-anchor', 'middle');
+      g.appendChild(el.tx); trainsG.appendChild(g); trainEls.set(tr.id, el); }
+    el.g.style.display = ''; el.g.style.opacity = L.alpha ?? 1;
+    for(let j=0;j<wag;j++){
+      const sj = dirA ? st.s - j*dist : st.s + j*dist;
+      toScreen(routeAt(L, sj, _p), sa); toScreen(routeAt(L, sj + eps, _p), sb);
+      const ang = Math.atan2(sb.y-sa.y, sb.x-sa.x), side = (dirA ? 1 : -1)*wid*.58, cx = sa.x - Math.sin(ang)*side, cy = sa.y + Math.cos(ang)*side, r = el.w[j];
+      r.setAttribute('x', -len/2); r.setAttribute('y', -wid/2); r.setAttribute('width', len); r.setAttribute('height', wid); r.setAttribute('rx', wid*.3);
+      r.setAttribute('fill', color); r.setAttribute('transform', `translate(${cx.toFixed(1)} ${cy.toFixed(1)}) rotate(${(ang*180/Math.PI).toFixed(1)})`);
+      if(j === 0){ el.tx.setAttribute('x', cx - Math.sin(ang)*side*1.9); el.tx.setAttribute('y', cy + Math.cos(ang)*side*1.9 + 4); el.tx.textContent = `${Math.round(load*100)} %`; el.tx.style.display = labels ? '' : 'none'; }
+    }
+  }
+  for(const [id, el] of trainEls) if(!seen.has(id)){ el.g.remove(); trainEls.delete(id); }
+}
+/* ---------- Zähldaten (APC): hier noch simuliert ---------- */
+// Platzhalter, bis echte APC-Daten angeschlossen sind. Je Fahrt: lf = höchste Auslastung auf der Fahrt (Anteil der Kapazität),
+// pax = Einsteiger. Aggregiert über einen typischen Werktag (laut APC-Papier nie Echtzeit). Echte Daten ersetzen nur diesen Block:
+// sie müssen tr.apc = {lf, pax}, L.cap (Kapazität je Fahrzeug) und L.c (Lage des vollsten Abschnitts, 0 bis 1) liefern.
+const APC_SOURCE = 'simulated', CAPACITY = {Metro: 560, Train: 420, Tram: 210, Ferry: 150, Bus: 95};
+const rnd01 = str => { let h = 2166136261; for(let i=0;i<str.length;i++){ h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } h ^= h >>> 13; h = Math.imul(h, 0x5bd1e995); h ^= h >>> 15; return (h >>> 0) / 4294967296; };
+for(const L of LINES) L.tl = [];
+for(const tr of TRIPS) if(tr.t0 >= 0 && tr.t0 < 86400) tr.line.tl.push(tr);
+(function simulateAPC(){
+  const midday = h => smooth(h, 9, 10.5)*(1 - smooth(h, 15, 16.5));
+  for(const L of LINES){
+    const mode = L.src.m || 'Other', r1 = rnd01('d|' + mode + L.name), r2 = rnd01('c|' + mode + L.name), r3 = rnd01('o|' + mode + L.name);
+    L.cap = CAPACITY[mode] || 100;
+    L.demand = r1 < .12 ? .22 + .2*r2 : r1 > .86 ? 1.0 + .35*r2 : .42 + .5*r2;   // Auslastung zur Spitze: wenige schwache Linien, wenige überlastete, die meisten dazwischen
+    L.c = .4 + .4*r2; L.amA = r3 > .5;   // vollster Abschnitt; Richtung A morgens stärker
+    for(const dir of ['A', 'B']){
+      const ts = L.tl.filter(t => t.dir === dir).sort((a, b) => a.t0 - b.t0), gaps = ts.map((t, i) => i ? t.t0 - ts[i-1].t0 : 0).filter(g => g > 0).sort((a, b) => a - b), med = gaps.length ? gaps[gaps.length >> 1] : 600;
+      ts.forEach((tr, i) => {
+        const h = tr.t0/3600 % 24, am = MORNING(h), pm = EVENING(h), sgn = (dir === 'A') === L.amA ? 1 : -1;
+        const prof = .08 + .92*Math.max(am, pm) + .3*midday(h), dirF = 1 + .28*sgn*(am - pm);
+        const gapF = i ? Math.max(.6, Math.min(1.5, .75 + .25*(tr.t0 - ts[i-1].t0)/med)) : .8;   // nach langer Lücke fahren mehr Leute mit
+        const lf = L.demand*prof*dirF*gapF*(.9 + .22*rnd01(`n|${L.name}|${dir}|${tr.t0}`));
+        tr.apc = {lf, pax: Math.round(lf*L.cap*(1.3 + .6*rnd01(`p|${L.name}|${dir}|${tr.t0}`)))};
+      });
+    }
+  }
+  const byKey = new Map(); for(const L of LINES) for(const tr of L.tl) byKey.set(L.li + '|' + tr.dir + '|' + tr.t0, tr.apc);
+  for(const tr of TRIPS){   // Kopien über Mitternacht (t0 ± 24 h) übernehmen die Werte ihres Originals
+    if(!tr.apc) tr.apc = byKey.get(tr.line.li + '|' + tr.dir + '|' + (((tr.t0 % 86400) + 86400) % 86400)) || {lf: .3, pax: 0};
+    tr.load = tr.apc.lf;
+  }
+})();
+
+/* ---------- Zeitleiste: eine Zeile je Linie, Filter nach Verkehrsmittel, Linien stumm schalten ---------- */
+// Stumm: die Linie ist weg (Karte, Züge, Haltestellen), ihre Zeile bleibt gedämpft stehen und lässt sich wieder einschalten.
+// Verkehrsmittel ausschalten blendet alle Linien dieser Art aus, auch ihre Zeilen.
+const DEF_H = 48, MIN_H = 40, MAX_H = 240, lnLabels = document.getElementById('ln-labels'), lnTrack = document.getElementById('ln-track'), lnCanvas = document.getElementById('ln-canvas'), lnWrap = document.getElementById('tl-lines'), playhead2 = document.getElementById('playhead2');
+// Spuren: je Linie eine Spur mit Farbe, Fahrzeugart, Titel, Stumm, Solo, Transparenz (Regler), eigener Höhe und Menü (Löschen). Solo: nur die Solo-Linien bleiben sichtbar (wie im Tonstudio).
+// Stumm und Löschen blenden die Linie aus (Karte, Züge, Haltestellen); „gelöscht“ heißt aus der Ansicht genommen (die Modelldaten bleiben unberührt, wiederherstellbar).
+const FKEY = 'rv-filter:' + ((window.MODEL_REC && window.MODEL_REC.id) || 'demo'), filt = {modes: {}, muted: new Set(), solo: new Set(), removed: new Set(), alpha: {}, heights: {}, onlyIssues: false};
+try { const st = JSON.parse(localStorage.getItem(FKEY) || 'null'); if(st){ Object.assign(filt.modes, st.modes || {}); (st.muted || []).forEach(k => filt.muted.add(k)); (st.solo || []).forEach(k => filt.solo.add(k)); (st.removed || []).forEach(k => filt.removed.add(k)); Object.assign(filt.alpha, st.alpha || {}); Object.assign(filt.heights, st.heights || {}); filt.onlyIssues = !!st.onlyIssues; } } catch(e){ /* ohne Speicher: Standard */ }
+const modeOf = L => L.src.m || 'Other', lineKey = L => modeOf(L) + '|' + (L.name || '');
+const MODE_ORDER = ['Metro', 'Train', 'Tram', 'Ferry', 'Bus'], modeRank = m => { const i = MODE_ORDER.indexOf(m); return i < 0 ? 99 : i; };
+const SVGI = d => `<svg viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
+const ICON = {
+  mute: SVGI('<path d="M11 5L6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/>'), muted: SVGI('<path d="M11 5L6 9H3v6h3l5 4z"/><path d="M16 9l5 6M21 9l-5 6"/>'),
+  solo: SVGI('<path d="M4 16v-3a8 8 0 0 1 16 0v3"/><rect x="3" y="14" width="4" height="6" rx="1.5"/><rect x="17" y="14" width="4" height="6" rx="1.5"/>'),
+  more: SVGI('<circle cx="5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/>'),
+  Bus: SVGI('<rect x="4" y="4" width="16" height="13" rx="2.5"/><path d="M4 11h16M7 17v3M17 17v3"/><circle cx="8" cy="14" r=".6"/><circle cx="16" cy="14" r=".6"/>'),
+  Tram: SVGI('<rect x="6" y="4" width="12" height="13" rx="3"/><path d="M6 11h12M9 21l1.5-4M15 21l-1.5-4M12 1v3"/>'),
+  Metro: SVGI('<rect x="5" y="3" width="14" height="14" rx="4"/><path d="M5 11h14M8 21l2-4M16 21l-2-4"/><circle cx="9" cy="14" r=".6"/><circle cx="15" cy="14" r=".6"/>'),
+  Train: SVGI('<rect x="5" y="4" width="14" height="14" rx="3"/><path d="M5 12h14M8 22l2-4M16 22l-2-4M9 1h6"/>'),
+  Ferry: SVGI('<path d="M3 15l2 5h14l2-5zM6 15V9h12v6M12 9V4"/>'),
+  Other: SVGI('<circle cx="12" cy="12" r="8"/>')};
+Object.assign(ICON, {alert: SVGI('<path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17v.4"/>'), undo: SVGI('<path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>')});
+let laneLines = [], rowTop = [], rowTotal = 0, selLine = null;
+const heightOf = L => Math.max(MIN_H, Math.min(MAX_H, filt.heights[lineKey(L)] || DEF_H));
+const audible = L => !filt.removed.has(lineKey(L)) && (filt.solo.size ? filt.solo.has(lineKey(L)) : !filt.muted.has(lineKey(L)));
+function layoutRows(){ let y = 0; rowTop = laneLines.map(L => { const t = y; y += heightOf(L); return t; }); rowTotal = y; }
+const rowAt = y => { let lo = 0, hi = laneLines.length - 1; if(hi < 0) return -1; while(lo < hi){ const m = (lo + hi + 1) >> 1; if(rowTop[m] <= y) lo = m; else hi = m - 1; } return lo; };
+function saveFilt(){ try { localStorage.setItem(FKEY, JSON.stringify({modes: filt.modes, muted: [...filt.muted], solo: [...filt.solo], removed: [...filt.removed], alpha: filt.alpha, heights: filt.heights, onlyIssues: filt.onlyIssues})); } catch(e){ /* nur Komfort */ } }
+// Takt (Fahrt) = Abfahrt am ersten Halt; die Breite ist die Standzeit dort: bei einem Fahrplan Abfahrt minus Ankunft, sonst die Standardzeit der Demo; mindestens 20 s wie in der Fahrt selbst
+const tripDwell = tr => { if(tr.dw == null){ const S = tr.line.S && tr.line.S[tr.dir], i = tr.T.idx[0]; tr.dw = S && S.arr && S.dep ? Math.max(20, S.dep[i] - S.arr[i]) : DWELL; } return tr.dw; };
+const stopOfTrip = tr => tr.line.st[tr.T.idx[0]];
+const loadAtStop = tr => tr.apc ? tr.apc.lf*(.65 + .35*Math.exp(-(((tr.line.stnS[tr.T.idx[0]]/(tr.line.LEN || 1) - tr.line.c)/.3)**2))) : tr.load;
+const tickBox = (tr, w) => { const xe = tvx(tr.t0/3600, w), bw = Math.max(2, Math.round(tripDwell(tr)/3600*w/(tv.b - tv.a))); return {xl: Math.round(xe) - bw, bw}; };
+function buildLaneList(){
+  laneLines = LINES.filter(L => filt.modes[modeOf(L)] !== false && !filt.removed.has(lineKey(L)) && (!filt.onlyIssues || L.issues)).sort((a, b) => modeRank(modeOf(a)) - modeRank(modeOf(b)) || String(a.name).localeCompare(String(b.name), 'en', {numeric:true}));
+  layoutRows(); lnLabels.textContent = '';
+  const frag = document.createDocumentFragment();
+  laneLines.forEach((L, r) => {
+    const k = lineKey(L), muted = !audible(L), row = document.createElement('div'); row.dataset.r = r; row.style.height = heightOf(L) + 'px';
+    row.className = 'trk' + (muted ? ' muted' : '') + (L === selLine ? ' sel' : '') + (L.nOver ? ' over' : '') + (L.nCold ? ' cold' : '');
+    row.innerHTML = '<div class="tc"><span class="bar"></span><span class="vic"></span><span class="tt"><b></b><small></small></span><span class="ctl">'
+      + `<button type="button" class="tb" data-act="mute"></button><button type="button" class="tb" data-act="solo"></button><input type="range" class="vol" min="0" max="100" step="1" data-act="vol"><button type="button" class="tb" data-act="menu"></button></span></div><div class="rs" data-act="resize"></div>`;
+    row.querySelector('.bar').style.background = L.color; row.querySelector('.vic').innerHTML = ICON[modeOf(L)] || ICON.Other; row.querySelector('.vic').setAttribute('role', 'img'); row.querySelector('.vic').setAttribute('aria-label', modeOf(L)); row.querySelector('.vic').title = modeOf(L);
+    row.querySelector('b').textContent = L.name; row.querySelector('.tt').title = L.name + (L.nOver || L.nCold ? ` · ${L.nOver} overcrowded, ${L.nCold} low-demand windows` : '') + '. Click for details, double-click to show the whole line.';
+    row.querySelector('small').textContent = L.tl.length ? L.tl.length + ' trips' : '';
+    const mb = row.querySelector('[data-act="mute"]'), sb = row.querySelector('[data-act="solo"]'), vb = row.querySelector('.vol'), xb = row.querySelector('[data-act="menu"]'), isMuted = filt.muted.has(k);
+    mb.innerHTML = isMuted ? ICON.muted : ICON.mute; mb.classList.toggle('on', isMuted); mb.setAttribute('aria-pressed', isMuted); mb.setAttribute('aria-label', (isMuted ? 'Unmute ' : 'Mute ') + L.name); mb.title = isMuted ? 'Unmute' : 'Mute: hide this line';
+    sb.innerHTML = ICON.solo; sb.classList.toggle('on', filt.solo.has(k)); sb.setAttribute('aria-pressed', filt.solo.has(k)); sb.setAttribute('aria-label', 'Solo ' + L.name); sb.title = 'Solo: show only the soloed lines';
+    const al = Math.round((filt.alpha[k] ?? 1)*100); vb.value = al; vb.style.setProperty('--p', al + '%'); vb.setAttribute('aria-label', `Opacity of ${L.name}`); vb.title = `Opacity ${al} %`;
+    xb.innerHTML = ICON.more; xb.setAttribute('aria-label', 'More for ' + L.name); xb.setAttribute('aria-haspopup', 'menu'); xb.title = 'More';
+    frag.append(row);
+  });
+  lnLabels.append(frag);
+  drawLaneCanvas();
+}
+const _lc = new THREE.Color();
+function drawLaneCanvas(){
+  const w = lnTrack.clientWidth; if(!w) return;
+  const dpr = devicePixelRatio || 1, h = Math.max(1, rowTotal);
+  lnCanvas.width = w*dpr; lnCanvas.height = h*dpr; lnCanvas.style.height = h + 'px';
+  const g = lnCanvas.getContext('2d'); g.scale(dpr, dpr); g.clearRect(0, 0, w, h);
+  laneLines.forEach((L, r) => {
+    const H = heightOf(L), y0 = rowTop[r] + 2, hh = H - 4, half = hh/2, dim = !audible(L);
+    g.fillStyle = '#f4f5fa'; g.beginPath(); g.roundRect(0, y0, w, hh, 10); g.fill();
+    g.strokeStyle = '#e1e4ee'; g.lineWidth = 1; { const mj = tickSteps()[1]; for(let k = Math.ceil(tv.a/mj); k*mj <= tv.b; k++){ const x = Math.round(tvx(k*mj, w)) + .5; g.beginPath(); g.moveTo(x, y0 + 3); g.lineTo(x, y0 + hh - 3); g.stroke(); } }
+    if(!dim) for(const o of L.opps || []){   // Handlungsbedarf als Band hinter den Fahrten: rot überlastet, blau kaum genutzt
+      g.fillStyle = o.type === 'over' ? 'rgba(214,69,61,.22)' : 'rgba(59,130,246,.18)'; const x0 = tvx(o.h0, w), x1 = tvx(o.h1, w), yy = y0 + (o.dir === 'A' ? 2 : half + 1), bh = half - 3;
+      g.fillRect(x0, yy, x1 - x0, bh); g.fillStyle = o.type === 'over' ? '#d6453d' : '#3b82f6'; g.fillRect(x0, yy, x1 - x0, 1.5);
+    }
+    const th = Math.max(6, Math.min(half - 6, 6 + (H - DEF_H)*.25));
+    for(const tr of L.tl){
+      if(dim) g.fillStyle = '#cfd3e0'; else { if(!tr.hex){ loadColor(tr.load, _lc); tr.hex = '#' + _lc.getHexString(); } g.fillStyle = tr.hex; }
+      const {xl, bw} = tickBox(tr, w); if(xl + bw < -4 || xl > w + 4) continue;
+      g.fillRect(xl, y0 + (tr.dir === 'A' ? half/2 : half + half/2) - th/2, bw, th);   // oben Richtung A, unten Richtung B
+    }
+    if(L === selLine){ g.strokeStyle = '#1f2bff'; g.lineWidth = 2; g.beginPath(); g.roundRect(1, y0 + 1, w - 2, hh - 2, 10); g.stroke(); }
+  });
+}
+function renderModeChips(){   // Filter nur als Icons, wie die Spuren: Verkehrsmittel, „braucht Handlung“, und bei Bedarf Aktionen mit Zähler
+  const box = document.getElementById('tl-modes'); box.textContent = '';
+  const btn = (icon, title, on, fn, cls = '', badge = 0) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'tg ' + cls + (on ? ' on' : ''); b.innerHTML = icon + (badge ? `<span class="bd">${badge}</span>` : ''); b.title = title; b.setAttribute('aria-label', title); if(on !== null) b.setAttribute('aria-pressed', !!on); b.onclick = fn; box.append(b); };
+  for(const m of [...new Set(LINES.map(modeOf))].sort((a, b) => modeRank(a) - modeRank(b))){
+    const all = LINES.filter(L => modeOf(L) === m), on = filt.modes[m] !== false, shown = all.filter(L => audible(L)).length;
+    btn(ICON[m] || ICON.Other, `${m}: ${on ? shown : 0} of ${all.length} lines shown. Click to ${on ? 'hide' : 'show'} all.`, on, () => { filt.modes[m] = !on; applyVisibility(); });
+  }
+  btn(ICON.alert, `Needs action: only the ${LINES.filter(L => L.issues).length} lines with an open finding`, !!filt.onlyIssues, () => { filt.onlyIssues = !filt.onlyIssues; applyVisibility(); }, 'warn');
+  if(filt.muted.size) btn(ICON.muted, `Unmute ${filt.muted.size} lines`, null, () => { filt.muted.clear(); applyVisibility(); }, '', filt.muted.size);
+  if(filt.solo.size) btn(ICON.solo, `Solo off (${filt.solo.size})`, null, () => { filt.solo.clear(); applyVisibility(); }, '', filt.solo.size);
+  if(filt.removed.size) btn(ICON.undo, `Restore ${filt.removed.size} deleted lines`, null, () => { filt.removed.clear(); applyVisibility(); }, '', filt.removed.size);
+}
+function applyVisibility(){
+  for(const L of LINES){
+    L.alpha = filt.alpha[lineKey(L)] ?? 1;
+    L.off = filt.modes[modeOf(L)] === false || !audible(L) || (filt.onlyIssues && !L.issues);
+    const d = L.off ? 'none' : ''; L.casing.style.display = L.stroke.style.display = d; if(L.capA) L.capA.style.display = L.capB.style.display = d;
+  }
+  const live = pois.map(() => 0); for(const L of LINES) if(!L.off) for(const i of L.src.s) live[i]++;
+  pois.forEach((o, i) => { o.live = live[i]; });
+  labelOrder.sort((a, b) => pois[b].live - pois[a].live || a - b);   // Umsteigepunkte der sichtbaren Linien zuerst beschriften
+  viewDirty++; buildLaneList(); renderModeChips(); saveFilt();
+}
+function popMenu(anchor, items){
+  document.querySelectorAll('.menu.pop').forEach(x => x.remove());
+  const m = document.createElement('div'); m.className = 'menu pop'; m.setAttribute('role', 'menu'); document.body.appendChild(m);
+  const close = () => { m.remove(); removeEventListener('pointerdown', away, true); anchor.focus(); };
+  const away = e => { if(!m.contains(e.target)){ m.remove(); removeEventListener('pointerdown', away, true); } };
+  for(const it of items){ const b = document.createElement('button'); b.type = 'button'; b.setAttribute('role', 'menuitem'); if(it.danger) b.className = 'danger'; b.disabled = !!it.off; b.textContent = it.l; b.addEventListener('click', () => { m.remove(); removeEventListener('pointerdown', away, true); it.f(); }); m.append(b); }
+  const r = anchor.getBoundingClientRect(); m.style.left = Math.max(8, Math.min(innerWidth - 210, r.right - 190)) + 'px'; m.style.top = Math.min(r.bottom + 6, innerHeight - m.offsetHeight - 8) + 'px';
+  m.addEventListener('keydown', e => { const bs = [...m.querySelectorAll('button:not(:disabled)')], i = bs.indexOf(document.activeElement); if(e.key === 'Escape'){ e.stopPropagation(); close(); } else if(e.key === 'ArrowDown'){ e.preventDefault(); bs[(i + 1) % bs.length].focus(); } else if(e.key === 'ArrowUp'){ e.preventDefault(); bs[(i - 1 + bs.length) % bs.length].focus(); } });
+  setTimeout(() => addEventListener('pointerdown', away, true)); m.querySelector('button:not(:disabled)').focus();
+}
+const lineOfRow = el => { const row = el.closest('.trk'); return row ? laneLines[+row.dataset.r] : null; };
+function setSel(L){   // Auswahl ohne die Liste neu aufzubauen (sonst ginge ein Doppelklick verloren)
+  selLine = L; lnLabels.querySelectorAll('.trk').forEach(r => r.classList.toggle('sel', laneLines[+r.dataset.r] === L)); drawLaneCanvas();
+}
+// Klick auf den Spurkopf: Linie wählen und das Panel öffnen (Inhalt wird noch geklärt). Doppelklick: die ganze Linie im Bild zeigen.
+function openTrack(L){
+  setSel(L); const n = document.createElement('p'); n.textContent = 'Information for this line will appear here.'; detailPanel.set(L.name, n);
+  dispatchEvent(new CustomEvent('track-open', {detail: {line: L}}));
+}
+// Kamera: weich zur ganzen Linie. Die Linie wird in der Mitte des sichtbaren Bereichs gezeigt (ohne Zeitleiste unten und Panel rechts); Zoom und Mitte passen sich an.
+let camTween = null;
+/* Leertaste: gedrückt halten und mit der linken Maustaste die Karte verschieben (sonst dreht die linke Taste). Kurz getippt startet oder pausiert sie die Wiedergabe. */
+{ let down = false, used = false; const canvas = renderer.domElement, LEFT0 = controls.mouseButtons.LEFT;
+  const off = () => { down = false; controls.mouseButtons.LEFT = LEFT0; canvas.style.cursor = ''; };
+  const free = e => !(e.ctrlKey || e.metaKey || e.altKey) && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA';
+  addEventListener('keydown', e => { if(e.code !== 'Space' || !free(e)) return; e.preventDefault(); if(e.repeat || down) return; down = true; used = false; controls.mouseButtons.LEFT = THREE.MOUSE.PAN; canvas.style.cursor = 'move'; });
+  addEventListener('keyup', e => { if(e.code !== 'Space') return; e.preventDefault(); if(!down) return; const was = used; off(); if(!was) setPlaying(!sim.playing); });
+  addEventListener('blur', off);
+  controls.addEventListener('start', () => { if(down) used = true; }); }
+// Kamera zu einem Punkt, ohne den Zoom zu ändern: der Punkt landet in der Mitte des sichtbaren Bereichs
+function panTo(wx, wz){
+  const W = innerWidth, H = innerHeight, visW = W - (show.panel ? rpanel.offsetWidth : 0), visH = H - tlEl.offsetHeight; if(!W || visW < 100 || visH < 100) return;
+  cam.updateMatrixWorld(true); const pv = new THREE.Vector3(wx, 0, wz).project(cam), sx = (pv.x*.5 + .5)*W, sy = (-pv.y*.5 + .5)*H, mpp = (2*FRUSTUM*aspect/cam.zoom)/W;
+  const right = new THREE.Vector3().setFromMatrixColumn(cam.matrixWorld, 0), up = new THREE.Vector3().setFromMatrixColumn(cam.matrixWorld, 1), dir = cam.position.clone().sub(controls.target);
+  const d = right.multiplyScalar(-(visW/2 - sx)*mpp).add(up.multiplyScalar((visH/2 - sy)*mpp)), vd = dir.clone().normalize().negate(); d.addScaledVector(vd, -d.y/vd.y);
+  const to = controls.target.clone().add(d), dist = Math.hypot(d.x, d.z)/(FRUSTUM/cam.zoom);
+  camTween = {t0: performance.now(), dur: calm ? 0 : Math.round(THREE.MathUtils.clamp(450 + 250*Math.log2(1 + dist), 450, 1100)), a: controls.target.clone(), b: to, z0: cam.zoom, z1: cam.zoom, dir};
+}
+function fitLine(L){
+  const W = innerWidth, H = innerHeight; if(!W || !H || !L.route || !L.route.length) return;
+  const visW = W - (show.panel ? rpanel.offsetWidth : 0), visH = H - tlEl.offsetHeight; if(visW < 100 || visH < 100) return;
+  const keepPos = cam.position.clone(), keepTgt = controls.target.clone(), keepZoom = cam.zoom, dir = keepPos.clone().sub(keepTgt);
+  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity; for(const q of L.route){ x0 = Math.min(x0, q.x); x1 = Math.max(x1, q.x); z0 = Math.min(z0, q.z); z1 = Math.max(z1, q.z); }
+  const c = new THREE.Vector3((x0 + x1)/2, 0, (z0 + z1)/2);
+  cam.position.copy(c).add(dir); cam.zoom = 1; cam.lookAt(c); cam.updateProjectionMatrix(); cam.updateMatrixWorld(true);
+  let nx0 = Infinity, nx1 = -Infinity, ny0 = Infinity, ny1 = -Infinity; const pv = new THREE.Vector3();
+  for(const q of L.route){ pv.copy(q).project(cam); nx0 = Math.min(nx0, pv.x); nx1 = Math.max(nx1, pv.x); ny0 = Math.min(ny0, pv.y); ny1 = Math.max(ny1, pv.y); }
+  const right = new THREE.Vector3().setFromMatrixColumn(cam.matrixWorld, 0), up = new THREE.Vector3().setFromMatrixColumn(cam.matrixWorld, 1);
+  cam.position.copy(keepPos); cam.zoom = keepZoom; cam.lookAt(keepTgt); cam.updateProjectionMatrix(); cam.updateMatrixWorld(true);
+  const sx = Math.max(.002, (nx1 - nx0)/2), sy = Math.max(.002, (ny1 - ny0)/2), mx = (nx0 + nx1)/2, my = (ny0 + ny1)/2;
+  const z = THREE.MathUtils.clamp(Math.min(.82*visW/(sx*W), .82*visH/(sy*H)), controls.minZoom, controls.maxZoom);
+  const dxp = (visW/W - 1 - mx*z)*W/2, dyp = -(1 - visH/H - my*z)*H/2, mpp = (2*FRUSTUM*aspect/z)/W;   // wie weit der Inhalt auf dem Bildschirm noch zur Mitte des sichtbaren Bereichs muss
+  const d = right.multiplyScalar(-dxp*mpp).add(up.multiplyScalar(dyp*mpp)), vd = dir.clone().normalize().negate(); d.addScaledVector(vd, -d.y/vd.y);   // auf dem Boden bleiben
+  const to = c.clone().add(d), dist = Math.hypot(to.x - keepTgt.x, to.z - keepTgt.z)/(FRUSTUM/Math.min(keepZoom, z)), dur = calm ? 0 : Math.round(THREE.MathUtils.clamp(650 + 350*Math.log2(1 + dist + Math.abs(Math.log2(z/keepZoom))), 650, 1400));
+  camTween = {t0: performance.now(), dur, a: keepTgt, b: to, z0: keepZoom, z1: z, dir};
+}
+function stepCamTween(){
+  if(!camTween) return; const k = camTween.dur ? Math.min(1, (performance.now() - camTween.t0)/camTween.dur) : 1, e = k < .5 ? 4*k*k*k : 1 - Math.pow(-2*k + 2, 3)/2;
+  controls.target.lerpVectors(camTween.a, camTween.b, e); cam.position.copy(controls.target).add(camTween.dir); cam.zoom = camTween.z0*Math.pow(camTween.z1/camTween.z0, e); cam.updateProjectionMatrix(); if(k >= 1) camTween = null;
+}
+for(const ev of ['pointerdown', 'wheel']) renderer.domElement.addEventListener(ev, () => { camTween = null; }, {passive:true});   // wer selbst steuert, bekommt die Kamera sofort zurück
+lnLabels.addEventListener('click', e => {
+  if(!e.target.closest('button, input, .rs')){ const L0 = lineOfRow(e.target); if(L0) openTrack(L0); return; }
+  const btn = e.target.closest('button[data-act]'); if(!btn) return; const L = lineOfRow(btn); if(!L) return; const k = lineKey(L), act = btn.dataset.act, flip = (set) => { if(set.has(k)) set.delete(k); else set.add(k); hotLine = null; applyVisibility(); };
+  if(act === 'mute') flip(filt.muted); else if(act === 'solo') flip(filt.solo);
+  else if(act === 'menu') popMenu(btn, [
+    {l: 'Reset height', f: () => { delete filt.heights[k]; saveFilt(); buildLaneList(); }, off: !filt.heights[k]},
+    {l: 'Reset opacity', f: () => { delete filt.alpha[k]; applyVisibility(); }, off: filt.alpha[k] == null},
+    {l: 'Delete line', danger: true, f: () => { filt.removed.add(k); filt.muted.delete(k); filt.solo.delete(k); if(selLine === L) selLine = null; hotLine = null; applyVisibility(); }}]);
+});
+lnLabels.addEventListener('input', e => {   // Regler: Transparenz der Linie auf der Karte, wirkt beim Ziehen
+  const v = e.target.closest('.vol'); if(!v) return; const L = lineOfRow(v); if(!L) return; const a = +v.value/100; if(a >= 1) delete filt.alpha[lineKey(L)]; else filt.alpha[lineKey(L)] = a;
+  L.alpha = a; v.style.setProperty('--p', v.value + '%'); v.title = `Opacity ${v.value} %`; viewDirty++; clearTimeout(saveFilt.t); saveFilt.t = setTimeout(saveFilt, 300);
+});
+lnLabels.addEventListener('dblclick', e => { if(e.target.closest('.ctl, .rs')) return; const L = lineOfRow(e.target); if(L){ openTrack(L); fitLine(L); } });
+{ let drag = null;   // Höhe einer Spur am unteren Rand ziehen
+  lnLabels.addEventListener('pointerdown', e => { const rs = e.target.closest('.rs'); if(!rs) return; const L = lineOfRow(rs); drag = {L, y: e.clientY, h: heightOf(L), el: rs.closest('.trk')}; rs.setPointerCapture(e.pointerId); e.preventDefault(); });
+  lnLabels.addEventListener('pointermove', e => { if(!drag) return; const h = Math.round(Math.max(MIN_H, Math.min(MAX_H, drag.h + e.clientY - drag.y))); filt.heights[lineKey(drag.L)] = h; drag.el.style.height = h + 'px'; layoutRows(); drawLaneCanvas(); });
+  const end = () => { if(drag){ drag = null; saveFilt(); } }; lnLabels.addEventListener('pointerup', end); lnLabels.addEventListener('pointercancel', end); }
+lnLabels.addEventListener('mouseover', e => { const L = lineOfRow(e.target); if(L !== hotLine && !(L && L.off)){ hotLine = L; viewDirty++; } });
+lnLabels.addEventListener('mouseleave', () => { if(hotLine){ hotLine = null; viewDirty++; } });
+{ const seekLn = e => { const r = lnTrack.getBoundingClientRect(); sim.t = THREE.MathUtils.clamp(tv.a + (e.clientX - r.left)/r.width*(tv.b - tv.a), 0, 23.9999)*3600; };
+  lnTrack.addEventListener('pointerdown', e => { sim.dragging = true; lnTrack.setPointerCapture(e.pointerId); seekLn(e); });
+  lnTrack.addEventListener('pointermove', e => { if(sim.dragging) seekLn(e); });
+  lnTrack.addEventListener('pointerup', () => sim.dragging = false); lnTrack.addEventListener('pointercancel', () => sim.dragging = false); }
+/* Zeitzoom: Strg/⌘ + Rad zoomt an der Mauszeigerstelle, Umschalt + Rad oder seitliches Wischen verschiebt, Tasten + und -, Knöpfe in der Kopfzeile. Beim Abspielen folgt der Ausschnitt dem Spielkopf. */
+const zin = document.getElementById('zin'), zout = document.getElementById('zout'), MIN_SPAN = 1/3;
+function syncZoomUi(){ zout.disabled = tv.b - tv.a >= 24 - 1e-6; zin.disabled = tv.b - tv.a <= MIN_SPAN + 1e-6; }
+function setView(a, b){ const sp = Math.min(24, Math.max(MIN_SPAN, b - a)); a = Math.max(0, Math.min(24 - sp, a)); if(Math.abs(a - tv.a) < 1e-9 && Math.abs(a + sp - tv.b) < 1e-9) return; tv.a = a; tv.b = a + sp; drawTimeline(); drawLaneCanvas(); syncZoomUi(); }
+function zoomBy(f, focusH){ const sp = tv.b - tv.a, nsp = Math.min(24, Math.max(MIN_SPAN, sp/f)), fr = (focusH - tv.a)/sp; setView(focusH - fr*nsp, focusH - fr*nsp + nsp); }
+const zoomFocus = () => { const h = sim.t/3600; return h >= tv.a && h <= tv.b ? h : (tv.a + tv.b)/2; };
+zin.addEventListener('click', () => zoomBy(2, zoomFocus())); zout.addEventListener('click', () => zoomBy(.5, zoomFocus()));
+for(const el of [trackEl, lnTrack]) el.addEventListener('wheel', e => {
+  const r = el.getBoundingClientRect(), sp = tv.b - tv.a;
+  if(e.ctrlKey || e.metaKey){ e.preventDefault(); zoomBy(Math.exp(-e.deltaY*(e.deltaMode ? .05 : .01)), tv.a + (e.clientX - r.left)/r.width*sp); }
+  else if(e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)){ e.preventDefault(); const d = (e.deltaX || e.deltaY)/r.width*sp; setView(tv.a + d, tv.b + d); }
+}, {passive:false});
+addEventListener('keydown', e => { if(e.ctrlKey || e.metaKey || e.altKey || e.target.tagName === 'INPUT') return; if(e.key === '+' || e.key === '=') zoomBy(2, zoomFocus()); else if(e.key === '-') zoomBy(.5, zoomFocus()); });
+function followPlayhead(){ const sp = tv.b - tv.a; if(sp >= 24 || !sim.playing || sim.dragging) return; const h = sim.t/3600; if(h < tv.a || h > tv.b - .06*sp) setView(h - .1*sp, h - .1*sp + sp); }
+syncZoomUi();
+const tip = document.createElement('div'); tip.id = 'tl-tip'; tip.hidden = true; document.body.appendChild(tip);
+const tickAt = (e, L, dir) => { const rr = lnTrack.getBoundingClientRect(), px = e.clientX - rr.left; return L.tl.find(q => { if(q.dir !== dir) return false; const {xl, bw} = tickBox(q, rr.width); return px >= xl - 3 && px <= xl + bw + 3; }); };
+const bandAt = e => { const r = lnTrack.getBoundingClientRect(), y = e.clientY - r.top, i = rowAt(y), L = laneLines[i]; if(!L) return {}; const h = tv.a + (e.clientX - r.left)/r.width*(tv.b - tv.a), dir = y - rowTop[i] < heightOf(L)/2 ? 'A' : 'B';
+  return {L, dir, o: audible(L) && (L.opps || []).find(q => q.dir === dir && h >= q.h0 && h < q.h1)}; };
+lnTrack.addEventListener('pointermove', e => {
+  const {L, dir, o} = bandAt(e);
+  if(!o && L && audible(L) && !sim.dragging){   // Takt unter dem Zeiger: Haltepunkt, Auslastung dort, Abfahrt und Standzeit
+    const tr = tickAt(e, L, dir);
+    if(tr){ const st = stopOfTrip(tr); tip.hidden = false; tip.textContent = ''; const b = document.createElement('b'), s1 = document.createElement('span'), s2 = document.createElement('small');
+      b.textContent = st.n; s1.textContent = `Load ${Math.round(loadAtStop(tr)*100)} % · departs ${clockText(tr.t0)} · stops ${Math.round(tripDwell(tr))} s`; s2.textContent = `${L.name} · ${dirLabel(L, dir)}`; tip.append(b, s1, s2);
+      tip.style.left = Math.min(innerWidth - 316, e.clientX + 14) + 'px'; tip.style.top = Math.max(8, e.clientY - tip.offsetHeight - 14) + 'px'; return; }
+  }
+  if(!o || sim.dragging){ tip.hidden = true; return; }
+  const t = oppText(o); tip.hidden = false; tip.textContent = '';
+  const b = document.createElement('b'), s1 = document.createElement('span'), s2 = document.createElement('small'), s3 = document.createElement('small');
+  b.textContent = `${L.name} · ${t.head}`; s1.textContent = dirLabel(L, dir) + ' · ' + t.body; s2.textContent = '→ ' + t.act; s3.textContent = 'Simulated counts · click to jump here, Alt+click dismisses';
+  tip.append(b, s1, s2, s3); tip.style.left = Math.min(innerWidth - 316, e.clientX + 14) + 'px'; tip.style.top = Math.max(8, e.clientY - tip.offsetHeight - 14) + 'px';
+});
+lnTrack.addEventListener('pointerleave', () => { tip.hidden = true; });
+let lnDownX = 0; lnTrack.addEventListener('pointerdown', e => { lnDownX = e.clientX; });
+lnTrack.addEventListener('click', e => {   // Klick auf einen Takt: die Karte fährt zum Haltepunkt (Zoom bleibt); Alt+Klick auf ein Band blendet den Befund aus
+  if(!e.altKey){ if(Math.abs(e.clientX - lnDownX) > 4) return; const {L, dir} = bandAt(e); const tr = L && audible(L) && tickAt(e, L, dir); if(tr){ const st = stopOfTrip(tr); panTo(st.x, st.z); } return; }
+  const {o} = bandAt(e); if(!o) return;
+  dismissed.add(o.id); try { localStorage.setItem(DISMISS_KEY, JSON.stringify([...dismissed])); } catch(e2){ /* nur Komfort */ } tip.hidden = true; updateIssueCounts(); applyVisibility();
+});
+// Zeitleiste als Karte am unteren Rand: am Griff nach oben ziehen, die Höhe ist frei (Pfeiltasten gehen auch, Doppelklick setzt zurück)
+{ const grip = document.getElementById('tl-grip'), HK = 'rv-tlh2'; let drag = null;
+  const minH = tlMinH = () => lnWrap.offsetTop + parseFloat(getComputedStyle(tlEl).paddingBottom);
+  const setH = (px, save = true) => { px = Math.round(Math.max(minH(), Math.min(innerHeight*.92, px))); tlEl.classList.add('sized'); document.documentElement.style.setProperty('--tlH', px + 'px'); if(save) try { localStorage.setItem(HK, px); } catch(e){ /* nur Komfort */ } layoutTimeline(); };
+  try { const v = +localStorage.getItem(HK); if(v){ tlEl.classList.add('sized'); document.documentElement.style.setProperty('--tlH', Math.max(60, v) + 'px'); } } catch(e){ /* Standard */ }
+  grip.addEventListener('pointerdown', e => { drag = {y: e.clientY, h: tlEl.offsetHeight}; grip.setPointerCapture(e.pointerId); });
+  grip.addEventListener('pointermove', e => { if(drag) setH(drag.h + drag.y - e.clientY); });
+  grip.addEventListener('pointerup', () => { drag = null; }); grip.addEventListener('pointercancel', () => { drag = null; });
+  grip.addEventListener('keydown', e => { if(e.key === 'ArrowUp' || e.key === 'ArrowDown'){ e.preventDefault(); setH(tlEl.offsetHeight + (e.key === 'ArrowUp' ? 48 : -48)); } });
+  grip.addEventListener('dblclick', () => { tlEl.classList.remove('sized'); document.documentElement.style.removeProperty('--tlH'); try { localStorage.removeItem(HK); } catch(e){ /* nur Komfort */ } layoutTimeline(); }); 
+  // Minimieren und zurückspringen (Taste D, Button in der Workbench): kleinste Höhe wie beim Herunterziehen, beim Zurückschalten die vorherige Höhe
+  const PK = 'rv-tlprev', tlBtn = document.getElementById('tlbtn'); let prevH = +(localStorage.getItem(PK) || 0) || 0;
+  tlBtnSync = () => { const open = tlEl.offsetHeight > minH() + 24; tlBtn.classList.toggle('on', open); tlBtn.setAttribute('aria-pressed', open); };
+  toggleTimeline = () => { if(tlEl.offsetHeight > minH() + 24){ prevH = tlEl.offsetHeight; try { localStorage.setItem(PK, prevH); } catch(e){ /* nur Komfort */ } setH(minH()); } else setH(prevH > minH() + 40 ? prevH : Math.round(innerHeight*.4)); };
+  tlBtn.addEventListener('click', toggleTimeline); }
+/* ---------- Handlungsbedarf ---------- */
+// Aus den (noch simulierten) Zähldaten: Zeitfenster je Linie und Richtung, in denen Fahrten über Kapazität laufen (APC: Auslastung gegen Kapazität)
+// oder kaum genutzt werden (APC: Bereiche mit geringer Nachfrage). Sie erscheinen als Bänder in der Zeitleiste und als farbiger Rand der Linie auf der Karte.
+const DISMISS_KEY = 'rv-dismissed:' + ((window.MODEL_REC && window.MODEL_REC.id) || 'demo'), dismissed = new Set(), OPPS = [];
+try { JSON.parse(localStorage.getItem(DISMISS_KEY) || '[]').forEach(k => dismissed.add(k)); } catch(e){ /* Standard */ }
+const dirLabel = (L, dir) => { const a = L.st[0].n, b = L.st[L.st.length-1].n, sh = t => t.length > 22 ? t.slice(0, 21) + '…' : t; return dir === 'A' ? `${sh(a)} → ${sh(b)}` : `${sh(b)} → ${sh(a)}`; };
+function computeOpps(){
+  OPPS.length = 0;
+  for(const L of LINES) for(const dir of ['A', 'B']){
+    const hrs = Array.from({length: 24}, () => ({n: 0, sum: 0, over: 0, peak: 0, excess: 0}));
+    for(const tr of L.tl) if(tr.dir === dir){ const b = hrs[Math.floor(tr.t0/3600)], lf = tr.apc.lf; b.n++; b.sum += lf; b.peak = Math.max(b.peak, lf); if(lf > 1){ b.over++; b.excess += (lf - 1)*L.cap; } }
+    const flag = hrs.map((b, h) => b.n && (b.over >= 2 || b.over/b.n >= .4) ? 'over' : (b.n >= 2 && b.sum/b.n < .10 && h >= 5 && h < 22 ? 'cold' : ''));
+    for(let h = 0; h < 24;){
+      if(!flag[h]){ h++; continue; }
+      let e = h; while(e + 1 < 24 && flag[e+1] === flag[h]) e++;
+      const win = hrs.slice(h, e + 1), n = win.reduce((a, b) => a + b.n, 0), sum = win.reduce((a, b) => a + b.sum, 0), type = flag[h];
+      const o = {id: `${modeOf(L)}|${L.name}|${dir}|${type}|${h}`, L, dir, type, h0: h, h1: e + 1, n, avg: sum/n, nOver: win.reduce((a, b) => a + b.over, 0), peak: Math.max(...win.map(b => b.peak)), excess: Math.round(win.reduce((a, b) => a + b.excess, 0))};
+      if(type === 'over' || (e > h && n >= 4)) OPPS.push(o);
+      h = e + 1;
+    }
+  }
+}
+
+function updateIssueCounts(){
+  for(const L of LINES){ L.nOver = 0; L.nCold = 0; L.opps = []; }
+  for(const o of OPPS) if(!dismissed.has(o.id)){ o.L.opps.push(o); if(o.type === 'over') o.L.nOver++; else o.L.nCold++; }
+  for(const L of LINES) L.issues = L.nOver + L.nCold;
+}
+const oppText = o => o.type === 'over'
+  ? {head: `Overcrowded ${pad2(o.h0)}:00–${pad2(o.h1 % 24)}:00`, body: `${o.nOver} of ${o.n} trips over capacity, peak ${Math.round(o.peak*100)} %`, act: (k => `Add ${k} trip${k > 1 ? 's' : ''} or shorten the headway`)(Math.max(1, Math.ceil(o.excess/(.8*o.L.cap))))}
+  : {head: `Low demand ${pad2(o.h0)}:00–${pad2(o.h1 % 24)}:00`, body: `${o.n} trips, average load ${Math.round(o.avg*100)} %`, act: `Run every ${Math.min(60, Math.max(5, Math.round((o.h1 - o.h0)*60/o.n*2/5)*5))} min instead of every ${Math.round((o.h1 - o.h0)*60/o.n)} min`};
+// Zustand einer Linie zur aktuellen Simulationszeit (für den Rand auf der Karte)
+const issueNow = L => { const h = (sim.t % 86400)/3600; let st = ''; for(const o of L.opps || []) if(h >= o.h0 && h < o.h1){ if(o.type === 'over') return 'over'; st = 'cold'; } return st; };
+computeOpps(); updateIssueCounts(); applyVisibility();
+applyVisibility();
+
+/* Startansicht per Adresszeile: ?at=Haltestelle&zoom=3&t=13:00&pause */
+{
+  const q = new URLSearchParams(location.search), p = CITY.pois.find(x => x.n === q.get('at'));
+  if(p){ controls.target.set(p.x, 0, p.z); cam.position.set(p.x-250, 195, p.z+250); }
+  if(q.get('zoom')){ cam.zoom = +q.get('zoom'); cam.updateProjectionMatrix(); }
+  if(q.get('t')){ const [h, m] = q.get('t').split(':').map(Number); sim.t = ((h*60) + (m || 0))*60; }
+  if(q.has('pause')) setPlaying(false);
+}
+let model, overlay = null, cars = null;
+function clear3D(){   // Untergrund, Gebäude, Bäume, Verkehr entfernen, damit sie aus neuen Daten neu aufgebaut werden können
+  const objs = [...flatMeshes, ...tall, ...(overlay ? [overlay] : []), ...(cars ? [cars.group] : [])];
+  overlay = cars = null;
+  for(const o of objs){ scene.remove(o); o.traverse(x => { x.geometry && x.geometry.dispose(); }); }
+  flatMeshes.length = 0; flatMats.length = 0; tall.length = 0;
+}
+async function make3D(progress){
+  await build();
+  model = await buildTrafficModel(p => progress(`Calculating traffic … ${Math.round(p*100)} %`));
+  overlay = makeLoadOverlay(model); cars = makeCars(model);
+}
+const loadingEl = document.getElementById('loading');
+await make3D(t => loadingEl.textContent = t);
+loadingEl.remove();
+layoutTimeline();
+
+/* Schalter für Verkehr und Linien, dazu die Legende der Farbskala */
+const show = {traffic:true, lines:true, labels:true, geom:geomReal, alerts:true, panel:false};
+function applyToggles(){
+  document.querySelectorAll('.tg[data-k]').forEach(b => { const on = show[b.dataset.k]; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); });
+  svg.style.display = poiHost.style.display = show.lines ? '' : 'none';
+  viewDirty++; rpanel.hidden = !show.panel; saveLens();
+  if(trafficOn !== show.traffic){ trafficOn = show.traffic; tlEl.classList.toggle('nt', !trafficOn); layoutTimeline(); }
+  document.querySelector('.tg[data-k="geom"]').hidden = !LINES.some(L => L.src.g);
+  if(show.geom !== geomReal){ geomReal = show.geom; applyGeom(); }
+}
+document.querySelectorAll('.tg[data-k]').forEach(b => b.addEventListener('click', () => { show[b.dataset.k] = !show[b.dataset.k]; applyToggles(); }));
+/* ---------- Lenses ---------- */
+// Eine Lens ist eine benannte Sicht auf das Netz: welche Ebenen an sind, welches Wetter und welcher Tag gilt. Später kommen weitere Teile dazu (zum Beispiel Kosten).
+// Bis zu 10 Lenses. Taste 1 bis 9 und 0 wählt, Doppelklick benennt um (der Name steht im Tooltip), das × beim Überfahren oder die Entf-Taste löscht, + legt eine neue aus der aktuellen Ansicht an.
+// Änderungen an Ebenen, Wetter oder Tag wirken sofort und werden in der aktiven Lens gespeichert. „Real route“, Panel und Zeitleistenhöhe gehören nicht dazu.
+const LENS_KEY = 'rv-lenses2', LAYER_KEYS = ['traffic', 'lines', 'alerts', 'labels'], MAXL = 10, NUMKEYS = '1234567890';
+const L_ALL = {traffic:true, lines:true, alerts:true, labels:true};
+const DEFAULT_LENSES = () => [
+  {name:'Overview', show:{...L_ALL}, wx:null, day:'weekdays'},
+  {name:'Action', show:{traffic:false, lines:true, alerts:true, labels:false}, wx:null, day:'weekdays'},
+  {name:'Rain day', show:{...L_ALL}, wx:'rain', day:'weekdays'},
+  {name:'Clean', show:{traffic:false, lines:true, alerts:false, labels:false}, wx:null, day:'weekdays'}];
+let lenses = DEFAULT_LENSES(), lensIx = 0, lensReady = false;
+try { const st = JSON.parse(localStorage.getItem(LENS_KEY) || 'null'); if(st && Array.isArray(st.lenses) && st.lenses.length && st.lenses.length <= MAXL){ lenses = st.lenses; lensIx = Math.min(lenses.length - 1, Math.max(0, st.ix | 0)); } } catch(e){ /* Standard */ }
+const lensBox = document.getElementById('lenses');
+const PLUS_ICON = ic => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>`, X_ICON = '<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M2 2l6 6M8 2l-6 6"/></svg>';
+function persistLens(){ try { localStorage.setItem(LENS_KEY, JSON.stringify({lenses, ix: lensIx})); } catch(e){ /* nur Komfort */ } }
+function saveLens(){ if(!lensReady) return; const l = lenses[lensIx]; if(!l) return; for(const k of LAYER_KEYS) l.show[k] = !!show[k]; l.wx = wxForce; l.day = dayVal; persistLens(); }
+function renderLenses(){
+  lensBox.textContent = '';
+  lenses.forEach((l, i) => {
+    const w = document.createElement('div'); w.className = 'lw';
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'slot' + (i === lensIx ? ' on' : ''); b.dataset.i = i; b.innerHTML = '<b></b>'; b.querySelector('b').textContent = (i + 1) % 10;
+    b.setAttribute('aria-pressed', i === lensIx); b.setAttribute('aria-label', `Lens ${(i + 1) % 10}: ${l.name}`); b.title = `${l.name} (${(i + 1) % 10}). Double-click to rename, Delete removes it.`;
+    w.append(b);
+    if(lenses.length > 1){ const x = document.createElement('button'); x.type = 'button'; x.className = 'x'; x.dataset.i = i; x.innerHTML = X_ICON; x.setAttribute('aria-label', `Delete lens ${l.name}`); x.title = 'Delete lens'; w.append(x); }
+    lensBox.append(w);
+  });
+  if(lenses.length < MAXL){ const a = document.createElement('button'); a.type = 'button'; a.className = 'tg'; a.id = 'lens-add'; a.innerHTML = PLUS_ICON(); a.setAttribute('aria-label', 'Add a lens from the current view'); a.title = `Add a lens from the current view (${lenses.length} of ${MAXL})`; lensBox.append(a); }
+}
+function applyLens(i){
+  const l = lenses[i]; if(!l) return;
+  lensIx = i; lensReady = false;
+  Object.assign(show, l.show); wxForce = l.wx || null; wxShown = ''; updateWxUi(); drawTimeline(); dayVal = l.day || 'weekdays'; updateDayUi();
+  applyToggles(); lensReady = true; persistLens(); renderLenses();
+}
+function addLens(){ if(lenses.length >= MAXL) return; lenses.push({name:'Lens ' + (lenses.length + 1), show:Object.fromEntries(LAYER_KEYS.map(k => [k, !!show[k]])), wx:wxForce, day:dayVal}); applyLens(lenses.length - 1); }
+function deleteLens(i){ if(lenses.length < 2) return; lenses.splice(i, 1); applyLens(Math.min(lensIx > i ? lensIx - 1 : lensIx, lenses.length - 1)); }
+function renameLens(i, btn){
+  const l = lenses[i]; if(!l) return; const m = document.createElement('div'), inp = document.createElement('input'); m.className = 'menu'; inp.type = 'text'; inp.value = l.name; inp.maxLength = 20; inp.setAttribute('aria-label', 'Lens name'); m.append(inp); document.body.appendChild(m);
+  const r = btn.getBoundingClientRect(); m.style.left = r.left + 'px'; m.style.top = r.bottom + 6 + 'px';
+  let done = false; const fin = ok => { if(done) return; done = true; if(ok && inp.value.trim()) l.name = inp.value.trim(); m.remove(); persistLens(); renderLenses(); };
+  inp.focus(); inp.select(); inp.addEventListener('blur', () => fin(true)); inp.addEventListener('keydown', e => { e.stopPropagation(); if(e.key === 'Enter') fin(true); if(e.key === 'Escape') fin(false); });
+}
+lensBox.addEventListener('click', e => {
+  const x = e.target.closest('.x'); if(x){ deleteLens(+x.dataset.i); return; }
+  if(e.target.closest('#lens-add')){ addLens(); return; }
+  const b = e.target.closest('.slot'); if(b) applyLens(+b.dataset.i);
+});
+lensBox.addEventListener('dblclick', e => { const b = e.target.closest('.slot'); if(b) renameLens(+b.dataset.i, b); });
+lensBox.addEventListener('keydown', e => { const b = e.target.closest('.slot'); if(b && (e.key === 'Delete' || e.key === 'Backspace')){ e.preventDefault(); deleteLens(+b.dataset.i); } });
+// Tasten der Workbench von links nach rechts: Q W E R T (Ebenen), A (Tag), S (Wetter), D (Zeitleiste), F (Panel); 1 bis 9 und 0 wählen die Lens
+addEventListener('keydown', e => {
+  if(e.ctrlKey || e.metaKey || e.altKey || e.target.tagName === 'INPUT') return;
+  const k = e.key.toLowerCase(), n = NUMKEYS.indexOf(k);
+  if(n >= 0 && n < lenses.length){ applyLens(n); return; }
+  const layer = {q:'traffic', w:'lines', e:'alerts', r:'labels', t:'geom', f:'panel'}[k];
+  if(layer){ if(layer === 'geom' && !LINES.some(L => L.src.g)) return; show[layer] = !show[layer]; applyToggles(); }
+  else if(k === 'a'){ e.preventDefault(); dayMenu.isOpen() ? dayMenu.close() : dayMenu.open(); }
+  else if(k === 's'){ e.preventDefault(); wxMenu.isOpen() ? wxMenu.close() : wxMenu.open(); }
+  else if(k === 'd') toggleTimeline();
+});
+
+/* ---------- Panel am rechten Rand ---------- */
+// Vorbereitet: Rahmen mit Titel und Inhalt. Andere Teile befüllen ihn mit detailPanel.set(titel, element). Breite ziehbar, wird gemerkt.
+const rpanel = document.getElementById('rpanel'), detailPanel = {set(title, node){ document.getElementById('rp-title').textContent = title; const b = document.getElementById('rp-body'); b.textContent = ''; b.append(node); show.panel = true; applyToggles(); }};
+{ const grip = document.getElementById('rp-grip'), WK = 'rv-rpw'; let drag = null;
+  const setW = (px, save = true) => { px = Math.round(Math.max(240, Math.min(innerWidth*.6, px))); document.documentElement.style.setProperty('--rpw', px + 'px'); if(save) try { localStorage.setItem(WK, px); } catch(e){ /* nur Komfort */ } };
+  try { const v = +localStorage.getItem(WK); if(v) document.documentElement.style.setProperty('--rpw', Math.max(240, v) + 'px'); } catch(e){ /* Standard */ }
+  grip.addEventListener('pointerdown', e => { drag = {x: e.clientX, w: rpanel.offsetWidth}; grip.setPointerCapture(e.pointerId); });
+  grip.addEventListener('pointermove', e => { if(drag) setW(drag.w + drag.x - e.clientX); });
+  grip.addEventListener('pointerup', () => { drag = null; }); grip.addEventListener('pointercancel', () => { drag = null; });
+  grip.addEventListener('keydown', e => { if(e.key === 'ArrowLeft' || e.key === 'ArrowRight'){ e.preventDefault(); setW(rpanel.offsetWidth + (e.key === 'ArrowLeft' ? 40 : -40)); } }); }
+applyLens(lensIx);
+if(CITY.meta.credit) document.getElementById('credit').textContent = CITY.meta.credit;
+if(CITY.meta.gaps && CITY.meta.gaps.length) document.getElementById('credit').textContent += ` · ${CITY.meta.gaps.length} tiles without data`;
+
+/* ---------- 3D-Karte im Hintergrund: bis sie fertig ist, arbeitet der Viewer mit der 2D-Karte ---------- */
+const bstat = document.getElementById('bstat');
+const notes = {};   // Hinweise der laufenden Hintergrundarbeiten (3D-Karte, Ausrichtung der Linien) nebeneinander
+function badge(html, key = '3d'){ if(html) notes[key] = html; else delete notes[key]; const t = Object.values(notes).join(' · '); bstat.hidden = !t; bstat.innerHTML = t; }
+const api = (p, o) => fetch(p, o).then(async r => { const j = await r.json().catch(() => ({})); if(!r.ok) throw Object.assign(new Error(j.error || r.statusText), {status: r.status}); return j; });
+const wait = ms => new Promise(r => setTimeout(r, ms));
+const applyLineGeom = (geoms, qs) => { if(!geoms || !CITY.lines) return false; geoms.forEach((g, i) => { if(CITY.lines[i]){ if(g) CITY.lines[i].g = g; if(qs && qs[i] != null) CITY.lines[i].q = qs[i]; } }); CITY.meta.aligned = true; return true; };
+let saving = Promise.resolve();   // Speichern nacheinander, damit sich 3D-Ergebnis und Ausrichtung nicht überschreiben
+const saveRec = () => saving = saving.then(() => { const rec = window.MODEL_REC; rec.city = CITY; return ModelStore.put(rec).catch(() => {}); });   // an das Netz angelegte Linienformen
+async function watchBuild(){
+  const rec = window.MODEL_REC, B = rec && rec.build; if(!B || B.done) return;
+  let misses = 0;
+  for(;;){
+    try {
+      const j = await api('api/jobs/' + B.id, {cache: 'no-store'});
+      misses = 0;
+      if(j.status === 'running'){ const d = j.steps.filter(x => x.status === 'done' || x.status === 'failed').length; badge(`Building the 3D map in the background … ${d} of ${j.steps.length} sources`); await wait(2000); continue; }
+      if(j.status === 'failed'){ badge('The 3D map could not be built: ' + (j.error || 'no source delivered data') + ' <a id="bretry">Retry</a>'); document.getElementById('bretry').onclick = () => { B.id = ''; watchBuild(); }; return; }
+      badge('Adding the 3D map …');
+      const res = await api(`api/jobs/${B.id}/result`);
+      applyLineGeom(res.layers.lineGeom, res.layers.lineQ); delete res.layers.lineGeom; delete res.layers.lineQ;
+      for(const k of Object.keys(res.layers)) CITY[k] = res.layers[k];
+      if(res.credit) CITY.meta.credit = CITY.meta.source = res.credit;
+      CITY.meta.gaps = [];
+      clear3D(); await make3D(t => badge(t)); applyGeom();
+      document.getElementById('credit').textContent = res.credit || document.getElementById('credit').textContent;
+      B.done = true; rec.build = B; rec.city = CITY;
+      rec.stats = {...rec.stats, buildings: CITY.buildings.length, roads: CITY.roads.length, water: CITY.water.length + CITY.waterLines.length, green: CITY.parks.length, trees: CITY.trees.length};
+      await saveRec();
+      badge(''); return;
+    } catch(e){
+      if(e.status === 404 && B.req && misses < 2){   // Server wurde neu gestartet: Auftrag erneut anlegen (die Zwischenspeicher machen das schnell)
+        try { const j = await api('api/build', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(B.req)}); B.id = j.id; misses++; continue; } catch(e2){ e = e2; }
+      }
+      badge('The 3D map is not being built (' + (e.message || 'server not reachable') + '). Start <code>pipeline/server.py</code> and reload.'); return;
+    }
+  }
+}
+/* Modelle ohne ausgerichtete Linien (älter als die Ausrichtung oder ohne Linienformen im damaligen Auftrag): die Linien nachträglich auf die Straßen legen */
+async function ensureAligned(){
+  const rec = window.MODEL_REC; if(!rec || !CITY.lines || CITY.meta.aligned || !CITY.lines.some(l => l.g)) return;
+  try {
+    badge('Laying the lines on the road network …', 'align');
+    const req = {center: CITY.meta.center, hx: CITY.meta.hx, hz: CITY.meta.hz, sources: ['overture-roads'], lines: CITY.lines.map(l => ({m: l.m, g: l.g || null}))};
+    let j, id, res;
+    for(let attempt = 0; ; attempt++){   // wurde der Server zwischendurch neu gestartet (404), den Auftrag erneut anlegen
+      try {
+        j = await api('api/build', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(req)}); id = j.id;
+        do { await wait(1500); j = await api('api/jobs/' + id, {cache: 'no-store'}); } while(j.status === 'running');
+        if(j.status !== 'done') throw new Error(j.error || 'failed');
+        res = await api(`api/jobs/${id}/result`); break;
+      } catch(e){ if(e.status !== 404 || attempt >= 2) throw e; }
+    }
+    const lens = CITY.lines.map(l => { let n = 0; const g = l.g || []; for(let i=2;i<g.length;i+=2) n += Math.hypot(g[i]-g[i-2], g[i+1]-g[i-1]); return n; });
+    if(!applyLineGeom(res.layers.lineGeom, res.layers.lineQ)) CITY.meta.aligned = true;
+    applyGeom();
+    await saveRec();
+    const qs = CITY.lines.map(l => l.q), tot = lens.reduce((a, b, i) => a + (qs[i] != null ? b : 0), 0), good = lens.reduce((a, b, i) => a + (qs[i] != null ? b * qs[i] : 0), 0);
+    if(tot){ badge(`Lines: ${Math.round(100*good/tot)} % of the route length follows the road and rail network`, 'align'); setTimeout(() => badge('', 'align'), 9000); return; }
+  } catch(e){ /* ohne Server bleibt die Linie, wie sie ist */ }
+  badge('', 'align');
+}
+watchBuild(); ensureAligned();
+
+/* Linien und Haltestellen hängen nur von der Kamera ab (nicht von der Zeit): nur neu berechnen, wenn sich die Ansicht ändert */
+let lastLineKey = '', lastPoiKey = '';
+const viewKey = () => [cam.zoom, cam.position.x, cam.position.y, cam.position.z, controls.target.x, controls.target.z, innerWidth, innerHeight, show.labels, show.lines, geomReal, viewDirty, Math.floor(sim.t/900)].join();
+function updateLines(){ const k = viewKey(); if(k !== lastLineKey){ lastLineKey = k; placeLine(); } }
+function updatePois(){ const k = viewKey(); if(k !== lastPoiKey){ lastPoiKey = k; placePois(); } }
+const PERF = new URLSearchParams(location.search).has('perf'), perf = {n: 0, s: []};
+const perfEl = document.createElement('div'); perfEl.className = 'pill'; perfEl.style.cssText = 'left:16px;top:64px;font:11px ui-monospace,Menlo,monospace;z-index:5'; if(PERF) document.body.appendChild(perfEl);
+const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
+let last = performance.now(), lastTiles = 0, lastCars = 0;
+renderer.setAnimationLoop(now => {
+  const dt = Math.min((now-last)/1000, .05); last = now;
+  // Zeit, Tagesgang und Wetter
+  if(sim.playing && !sim.dragging) sim.t = (sim.t + dt*sim.speed) % 86400;
+  const hNow = sim.t/3600, env = applyEnvironment(hNow), f = trafficAt(hNow);
+  clockEl.textContent = clockText(sim.t); followPlayhead(); { const px = tvx(sim.t/3600, trackEl.clientWidth), vis = px >= -2 && px <= trackEl.clientWidth + 2; playheadEl.style.transform = `translateX(${px}px)`; playhead2.style.transform = `translateX(${tvx(sim.t/3600, lnTrack.clientWidth)}px)`; playheadEl.style.display = playhead2.style.display = vis ? '' : 'none'; } showWeather(env.w);
+  stepCamTween(); controls.update();
+  // weit draußen nur die Karte, nah dran wächst die Stadt aus ihr heraus (Adaptive Experience, kein sichtbarer Bereichsrand)
+  const k = THREE.MathUtils.smoothstep(cam.zoom, .12, .45);
+  tall.forEach(m => { m.visible = k > .02; m.scale.y = Math.max(k, .001); });
+  // Verkehr: weit draußen Farbe der Auslastung, nah dran Fahrzeuge in passender Zahl
+  if(overlay) overlay.visible = show.traffic;
+  if(overlay && show.traffic){
+    overlay.material.uniforms.uMpp.value = (2*FRUSTUM*aspect/cam.zoom)/innerWidth;
+    overlay.material.uniforms.uOpacity.value = .35 + .65*(1 - THREE.MathUtils.smoothstep(cam.zoom, .25, .7));
+    overlay.material.uniforms.uScale.value = f;
+  }
+  const carsOn = !!cars && show.traffic && cam.zoom > .2;
+  if(cars) cars.group.visible = carsOn;
+  if(carsOn){
+    if(now - lastCars > 400){
+      lastCars = now; cars.rebalance(controls.target.x, controls.target.z, Math.min(2600, FRUSTUM/cam.zoom*1.6), f);
+    }
+    cars.update(calm ? 0 : dt, THREE.MathUtils.clamp(1.6/cam.zoom, 1, 4), f, Math.min(.4, env.shadowOpacity*1.6));
+  }
+  const fg = THREE.MathUtils.smoothstep(cam.zoom, .08, .25);   // eigener Untergrund blendet über der Karte ein
+  flatMats.forEach(m => m.opacity = fg); flatMeshes.forEach(m => m.visible = fg > .01);
+  washEl.style.opacity = .45*(1-k);  // weit draußen tritt die Linie vor der Karte hervor
+  if(now - lastTiles > 300){ lastTiles = now; updateTiles(); }
+  if(PERF){   // ?perf: Zeit je Teil und Bild (gleitender Mittelwert), um Engpässe großer Städte zu finden
+    const tm = []; const T = f => { const t = performance.now(); f(); tm.push(performance.now() - t); };
+    T(() => updateSun(controls.target)); T(updateLines); T(() => placeTrains(sim.t)); T(updatePois); T(() => renderer.render(scene, cam));
+    perf.n++; tm.forEach((v, i) => perf.s[i] = (perf.s[i] || 0)*.9 + v*.1);
+    if(perf.n % 30 === 0) perfEl.textContent = `ms/frame  sun ${perf.s[0].toFixed(1)} · lines ${perf.s[1].toFixed(1)} · trains ${perf.s[2].toFixed(1)} · stops ${perf.s[3].toFixed(1)} · render ${perf.s[4].toFixed(1)} · trips ${TRIPS.length} · buildings ${CITY.buildings.length}`;
+  } else { updateSun(controls.target); updateLines(); placeTrains(sim.t); updatePois(); renderer.render(scene, cam); }
+});
+</script>
+</body>
+</html>
