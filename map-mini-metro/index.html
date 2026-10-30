@@ -1,0 +1,1344 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mini Metro</title>
+<style>
+  :root { --bg: #f4f3ee; --ink: #2e2e2e; --muted: #9a978c; --panel: #ffffffe6; --line: #e2dfd4; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--ink);
+    font: 13px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; user-select: none; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: default; }
+  .hud { position: fixed; display: flex; gap: 6px; align-items: center; }
+  #stats, #legend, #tools { text-shadow: 0 0 5px #f4f3ee, 0 0 3px #f4f3ee; }
+  #stats { top: 14px; left: 20px; gap: 26px; align-items: baseline; }
+  #stats b { font-size: 30px; font-weight: 300; letter-spacing: -.5px; }
+  #stats small { color: var(--muted); font-size: 12px; margin-left: 6px; }
+  #tools { top: 12px; right: 14px; }
+  #city { top: 12px; left: 50%; transform: translateX(-50%); z-index: 6; }
+  #city > button { display: flex; align-items: center; gap: 6px; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 20px; padding: 7px 12px 7px 14px; font: 500 13px/1 inherit; color: var(--ink); cursor: pointer; }
+  #city > button:hover { background: #fff; }
+  #city svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+  #cityMenu { position: absolute; top: 40px; left: 50%; transform: translateX(-50%); min-width: 250px; background: #fff;
+    border: 1px solid var(--line); border-radius: 14px; padding: 6px; box-shadow: 0 8px 24px #0002; display: none; }
+  #cityMenu .ci { padding: 8px 12px; border-radius: 9px; cursor: pointer; display: flex; justify-content: space-between; gap: 14px; }
+  #cityMenu .ci:hover { background: #0000000a; }
+  #cityMenu .ci.on { font-weight: 600; }
+  #cityMenu small { display: block; padding: 8px 12px 4px; color: var(--muted); font-size: 11px; line-height: 1.4; border-top: 1px solid var(--line); margin-top: 4px; }
+  #cityMenu code { font-size: 10px; background: #0000000a; padding: 1px 4px; border-radius: 4px; }
+  #bottom { bottom: 14px; left: 50%; transform: translateX(-50%); gap: 10px; }
+  .btn { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 50%;
+    border: 0; background: transparent; color: var(--ink); cursor: pointer; padding: 0; }
+  .btn:hover { background: #0000000f; }
+  .btn.on { background: var(--ink); color: #fff; }
+  .btn svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2;
+    stroke-linecap: round; stroke-linejoin: round; }
+  .btn.sm { width: 24px; height: 24px; background: var(--panel); border: 1px solid var(--line); }
+  .btn.sm svg { width: 12px; height: 12px; }
+  .chip { display: flex; align-items: center; gap: 3px; }
+  .chip .dot { width: 30px; height: 30px; border-radius: 50%; border: 3px solid transparent; cursor: pointer; color: #fff;
+    font-weight: 700; font-size: 12px; display: grid; place-items: center; opacity: .25; }
+  .chip.used .dot { opacity: 1; }
+  .chip.sel .dot { border-color: var(--ink); box-shadow: 0 0 0 2px var(--bg) inset; }
+  .chip .ctl { display: none; grid-template-columns: 24px 24px; gap: 2px; }
+  .chip.used .ctl { display: grid; }
+  #pool, #cost { display: flex; align-items: center; gap: 6px; font-weight: 500; white-space: nowrap; background: var(--panel);
+    border: 1px solid var(--line); border-radius: 18px; padding: 6px 12px; }
+  #cost small, #pool small { color: var(--muted); font-weight: 400; }
+  #legend { left: 20px; top: 84px; flex-direction: column; align-items: flex-start; gap: 2px; }
+  #legend .it { display: flex; align-items: center; gap: 9px; padding: 4px 8px 4px 4px; border-radius: 14px; cursor: pointer; color: var(--muted); }
+  #legend .it:hover { background: #0000000a; }
+  #legend .it.on { background: var(--ink); color: #fff; }
+  #legend svg { width: 16px; height: 16px; }
+  #legend small { color: var(--muted); margin: 6px 0 0 4px; font-size: 11px; }
+  #tip { position: fixed; pointer-events: none; background: #fff; border: 1px solid var(--line);
+    border-radius: 12px; padding: 10px 12px; box-shadow: 0 6px 20px #0002; display: none; min-width: 250px; z-index: 5; }
+  #tip h4 { margin: 0 0 2px; font-size: 14px; }
+  #tip .row { display: flex; align-items: center; gap: 6px; margin: 3px 0; }
+  #tip .bar { height: 6px; border-radius: 3px; background: #2e2e2e; }
+  #tip .lbl { width: 76px; color: var(--muted); }
+  #tip .val { width: 74px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+  #toast { position: fixed; top: 64px; left: 50%; transform: translateX(-50%); background: var(--ink);
+    color: #fff; padding: 8px 14px; border-radius: 20px; opacity: 0; transition: opacity .3s; pointer-events: none; }
+  #hint { position: fixed; left: 50%; top: 50%; transform: translate(-50%, 150px); text-align: center;
+    color: var(--muted); pointer-events: none; transition: opacity .6s; }
+  #modal { position: fixed; inset: 0; background: #0006; display: none; place-items: center; z-index: 10; }
+  #modal .card { background: #fff; border-radius: 16px; padding: 22px 24px; width: min(440px, 92vw);
+    box-shadow: 0 10px 40px #0004; max-height: 92vh; overflow: auto; }
+  #modal h2 { margin: 0 0 4px; font-size: 18px; }
+  #modal p.sub { margin: 0 0 14px; color: var(--muted); }
+  #modal table { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
+  #modal td { padding: 6px 0; border-bottom: 1px solid #eee; }
+  #modal td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+  #modal tr.total td { font-weight: 700; border-bottom: 0; border-top: 2px solid var(--ink); font-size: 15px; }
+  #modal .actions { display: flex; gap: 8px; justify-content: flex-end; }
+  #modal .actions .btn { width: auto; border-radius: 19px; padding: 0 16px; background: #0000000f; }
+  #foot { position: fixed; left: 20px; bottom: 12px; color: var(--muted); font-size: 10px; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="stats" class="hud">
+  <span><b id="sScore">0</b><small>arrived</small></span>
+  <span><b id="sWeek">1</b><small>week</small></span>
+  <span><b id="sStations">1</b><small>stops</small></span>
+</div>
+
+<div id="city" class="hud"><button id="bCity" type="button" title="Choose a city"><span id="cityName"></span><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button><div id="cityMenu"></div></div>
+
+<div id="tools" class="hud">
+  <button class="btn" id="bPause" title="Pause (space bar)"></button>
+  <button class="btn" id="bSpeed" title="Speed"></button>
+  <button class="btn" id="bHeat" title="Show demand on the map"></button>
+  <button class="btn" id="bPlan" title="Planning mode: crowding does not end the game"></button>
+  <button class="btn" id="bProp" title="Propose a network"></button>
+  <button class="btn" id="bSum" title="Summary and costs"></button>
+  <button class="btn" id="bNew" title="Restart"></button>
+</div>
+
+<div id="legend" class="hud"></div>
+
+<div id="bottom" class="hud">
+  <div id="chips" style="display:flex;gap:6px"></div>
+  <div id="pool"></div>
+  <div id="cost"></div>
+</div>
+
+<div id="prop" class="hud" style="display:none;top:64px;left:50%;transform:translateX(-50%);background:var(--panel);border:1px solid var(--line);border-radius:24px;padding:4px 6px 4px 18px;gap:8px;z-index:4">
+  <span id="propTxt" style="font-weight:600"></span>
+  <button class="btn" id="propOk" title="Build the proposal"></button>
+  <button class="btn" id="propNo" title="Discard (Esc)"></button>
+</div>
+<div id="tip"></div>
+<div id="toast"></div>
+<div id="hint">Drag from one stop to the next to build a line.<br>Click a line to edit it. Drag a line end onto its other end to close a ring.</div>
+<div id="foot"></div>
+<div id="modal"><div class="card" id="card"></div></div>
+
+<script src="data/cities.js" onerror="window.CITIES = window.CITIES || []"></script>
+<script>
+// City selection: ?city=<id>, else the last one used, else the first built city
+(function () {
+  var list = window.CITIES || [], id = new URLSearchParams(location.search).get("city");
+  try { if (!id) id = localStorage.getItem("metroCity"); } catch (e) {}
+  if (!list.some(function (c) { return c.id === id; })) id = list.some(function (c) { return c.id === "karlsruhe"; }) ? "karlsruhe" : (list.length ? list[0].id : "karlsruhe");
+  window.CITY_ID = id;
+  document.write('<script src="data/' + id + '.js"><\/script><script src="data/' + id + '-roads.js" onerror="window.CITY_ROADS = null"><\/script>');
+})();
+</script>
+<script>
+"use strict";
+/* ============================================================ Configuration */
+// Costs are kept simple on purpose. CFG.cost can later be replaced by a custom cost function.
+const CFG = {
+  cost: {
+    perKm: 30,        // € million per km of track
+    bridgePerM: 1.5,  // € million surcharge per metre of water crossed
+    station: 20,      // € million per stop
+    train: 5,         // € million per vehicle
+    corridor(route, c) { return route.len / 1000 * c.perKm + route.bridgeLen * c.bridgePerM; },
+  },
+  trainSpeed: 320,     // m/s Simulationszeit
+  trainCap: 8,
+  stationCap: 10,
+  overcrowdSec: 40,
+  coverRadius: 800,    // catchment of a stop (m)
+  minStationDist: 1000,
+  catchRadius: 600,
+  startTrains: 3,
+  weekSec: 45,
+  maxLines: 6,
+  followStreets: true,                    // lines follow the real street network when it is available
+  unlocked: { rail: true, tram: true },   // transport modes available; more (bus, ...) can be unlocked later
+  paxRate: 0.05,       // passengers per second and stop at average activity
+  spawnGap: 40,        // Sekunden zwischen neuen Halten am Anfang
+  spawnGapMin: 20,     // lower limit, shrinks by 0.5 s with every stop
+  growthSec: 500,      // demand grows by 100 % in this time
+};
+/* Categories: every shape stands for an interest. The data decide where they occur. */
+const TYPES = D_cats();
+function D_cats() { return (window.CITY_DATA && window.CITY_DATA.cats) || ["R", "W", "E", "B", "F"]; }
+const CAT = {
+  R: { name: "Home", glyph: "●", unit: "residents", col: [224, 123, 57] },
+  W: { name: "Work", glyph: "▲", unit: "jobs", col: [70, 110, 170] },
+  E: { name: "Shopping", glyph: "■", unit: "points", col: [190, 70, 130] },
+  B: { name: "Education", glyph: "◆", unit: "points", col: [60, 150, 90] },
+  F: { name: "Leisure", glyph: "⬟", unit: "points", col: [40, 150, 160] },
+};
+// Trip purposes: who wants to go where (shares per row, weighted with the real data)
+const TRIP = {
+  R: { R: .05, W: .40, E: .25, B: .12, F: .18 },
+  W: { R: .45, W: .05, E: .25, B: .05, F: .20 },
+  E: { R: .50, W: .10, E: .05, B: .05, F: .30 },
+  B: { R: .50, W: .10, E: .15, B: .05, F: .20 },
+  F: { R: .55, W: .10, E: .20, B: .05, F: .10 },
+};
+// small categories (education, leisure) have high location quotients everywhere, so they are damped slightly
+const LOCAL_BIAS = { R: 1.25, W: 1.05, E: 0.9, B: 0.8, F: 1.0 };
+const ACT_W = { R: .45, W: .25, E: .12, B: .08, F: .10 };   // weight of each category in the activity
+const COLORS = ["#e5413c", "#2b7be4", "#3aa655", "#f2b630", "#8b5cc9", "#f28c28"];
+
+/* ============================================================ Data */
+const D = window.CITY_DATA;
+const NX = D.nx, NY = D.ny, CELL = D.cell, MINX = D.minx, MINY = D.miny;
+const tot = D.totals;
+const cellIdx = (i, j) => j * NX + i;
+const raw = {}, norm = {};
+TYPES.forEach(c => { raw[c] = new Float32Array(NX * NY); norm[c] = new Float32Array(NX * NY); });
+for (const row of D.cells) { const k = cellIdx(row[0], row[1]); TYPES.forEach((c, n) => { raw[c][k] = row[2 + n]; }); }
+// normalised to city total = 1 so the categories are comparable
+TYPES.forEach(c => { const t = tot[c] || 1; for (let k = 0; k < NX * NY; k++) norm[c][k] = raw[c][k] / t; });
+const cellAct = new Float32Array(NX * NY);
+for (let k = 0; k < NX * NY; k++) cellAct[k] = TYPES.reduce((a, c) => a + ACT_W[c] * norm[c][k], 0);
+const cx = (i) => MINX + (i + 0.5) * CELL, cy = (j) => MINY + (j + 0.5) * CELL;
+
+// smoothed activity (for the emergence of stops)
+function smoothGrid(src, rad) {
+  const out = new Float32Array(NX * NY), rc = Math.ceil(rad / CELL);
+  for (let j = 0; j < NY; j++) for (let i = 0; i < NX; i++) {
+    let s = 0;
+    for (let dj = -rc; dj <= rc; dj++) for (let di = -rc; di <= rc; di++) {
+      const a = i + di, b = j + dj;
+      if (a < 0 || b < 0 || a >= NX || b >= NY) continue;
+      if (Math.hypot(di, dj) * CELL <= rad) s += src[cellIdx(a, b)];
+    }
+    out[cellIdx(i, j)] = s;
+  }
+  return out;
+}
+const actSm = smoothGrid(cellAct, CFG.catchRadius);
+const refAct = (() => { const v = Array.from(actSm).filter(x => x > 0).sort((a, b) => a - b); return v[Math.floor(v.length * 0.9)] || 1e-6; })();
+
+// Real stop points (OSM). Stations can only appear at stops that exist and whose mode is unlocked.
+const STOPS = (D.stops || []).map(([x, y, name, mode]) => {
+  const i = Math.floor((x - MINX) / CELL), j = Math.floor((y - MINY) / CELL);
+  const inb = i >= 0 && j >= 0 && i < NX && j < NY;
+  return { x, y, name, mode, act: inb ? actSm[cellIdx(i, j)] : 0, used: false };
+});
+const stopOpen = (st) => CFG.unlocked[st.mode] && !st.used;
+
+/* ============================================================ Water mask */
+const WM = 8; // m pro Pixel
+const wmW = Math.ceil((D.bounds[2] - D.bounds[0]) / WM), wmH = Math.ceil((D.bounds[3] - D.bounds[1]) / WM);
+const waterCanvas = document.createElement("canvas");
+waterCanvas.width = wmW; waterCanvas.height = wmH;
+const wctx = waterCanvas.getContext("2d", { willReadFrequently: true });
+const wx = (x) => (x - D.bounds[0]) / WM, wy = (y) => (D.bounds[3] - y) / WM;
+wctx.fillStyle = "#4a90b8";
+wctx.beginPath();
+for (const ring of D.water.rings) {
+  ring.forEach(([x, y], i) => i ? wctx.lineTo(wx(x), wy(y)) : wctx.moveTo(wx(x), wy(y)));
+  wctx.closePath();
+}
+wctx.fill("evenodd");
+wctx.strokeStyle = "#4a90b8"; wctx.lineCap = "round"; wctx.lineJoin = "round";
+for (const [wd, pts] of D.water.lines) {
+  wctx.lineWidth = Math.max(2, wd / WM);
+  wctx.beginPath();
+  pts.forEach(([x, y], i) => i ? wctx.lineTo(wx(x), wy(y)) : wctx.moveTo(wx(x), wy(y)));
+  wctx.stroke();
+}
+const wData = wctx.getImageData(0, 0, wmW, wmH).data;
+function isWater(x, y) {
+  const i = Math.floor(wx(x)), j = Math.floor(wy(y));
+  if (i < 0 || j < 0 || i >= wmW || j >= wmH) return false;
+  return wData[(j * wmW + i) * 4 + 3] > 100;
+}
+// water layer (only used as a mask for bridge costs, the basemap shows the water)
+const waterVis = document.createElement("canvas");
+waterVis.width = wmW; waterVis.height = wmH;
+(() => {
+  const g = waterVis.getContext("2d"), im = g.createImageData(wmW, wmH);
+  for (let k = 0; k < wmW * wmH; k++) {
+    if (wData[k * 4 + 3] > 100) { im.data[k * 4] = 207; im.data[k * 4 + 1] = 226; im.data[k * 4 + 2] = 236; im.data[k * 4 + 3] = 255; }
+  }
+  g.putImageData(im, 0, 0);
+})();
+// demand maps: total and per category
+const heat = {};
+function makeHeat(arr, col, gain) {
+  const cv = document.createElement("canvas"); cv.width = NX; cv.height = NY;
+  const g = cv.getContext("2d"), im = g.createImageData(NX, NY);
+  const v = Array.from(arr).filter(x => x > 0).sort((a, b) => a - b), top = v[Math.floor(v.length * 0.95)] || 1e-9;
+  for (let j = 0; j < NY; j++) for (let i = 0; i < NX; i++) {
+    const t = Math.min(1, Math.sqrt(arr[cellIdx(i, j)] / (top * gain)));
+    const p = ((NY - 1 - j) * NX + i) * 4;
+    im.data[p] = col[0]; im.data[p + 1] = col[1]; im.data[p + 2] = col[2]; im.data[p + 3] = Math.round(t * 170);
+  }
+  g.putImageData(im, 0, 0); return cv;
+}
+heat.all = makeHeat(cellAct, [222, 110, 60], 1);
+TYPES.forEach(c => { heat[c] = makeHeat(norm[c], CAT[c].col, 1); });
+
+/* ============================================================ State */
+let S; // Spielzustand
+function newGame() {
+  S = {
+    t: 0, speed: 1, paused: false, over: false, plan: S ? S.plan : false, heat: S ? S.heat : null,
+    stations: [], lines: [], pool: CFG.startTrains, score: 0, scoreBy: Object.fromEntries(TYPES.map(c => [c, 0])),
+    week: 1, lastSpawn: 0, sd: new Float32Array(STOPS.length), netVer: 0,
+    corridors: new Map(),          // key -> {route, count}
+    spent: { track: 0, bridge: 0, station: 0, train: 0, bridges: 0, km: 0, bridgeM: 0, stations: 0, trains: 0 },
+    drag: null, hover: null, nextId: 1, builtStations: new Set(), sel: null,
+  };
+  clearRoutes();
+  STOPS.forEach(s => { s.used = false; });
+  let hi = -1, hd = 600;
+  STOPS.forEach((s, k) => { const d = Math.hypot(s.x - D.hbf[0], s.y - D.hbf[1]); if (d < hd) { hd = d; hi = k; } });
+  const hs = hi >= 0 ? STOPS[hi] : null;
+  addStation(hs ? hs.x : D.hbf[0], hs ? hs.y : D.hbf[1], "E", D.hbf[2] || "Main station", true, hs); // main station = centre / shopping
+  for (let n = 0; n < 2; n++) trySpawnStation(true);
+  S.lastSpawn = 0;
+  buildChips(); refreshHud(); closeModal(); clearProposal();
+  document.getElementById("hint").style.opacity = 1;
+}
+
+/* ---------- Stations */
+function localShares(x, y, rad) {
+  const rc = Math.ceil(rad / CELL), ci = Math.floor((x - MINX) / CELL), cj = Math.floor((y - MINY) / CELL);
+  const sh = Object.fromEntries(TYPES.map(c => [c, 0])); let n = 0;
+  for (let dj = -rc; dj <= rc; dj++) for (let di = -rc; di <= rc; di++) {
+    const a = ci + di, b = cj + dj;
+    if (a < 0 || b < 0 || a >= NX || b >= NY || Math.hypot(di, dj) * CELL > rad) continue;
+    n++; const k = cellIdx(a, b);
+    for (const c of TYPES) sh[c] += norm[c][k];
+  }
+  return { sh, n };
+}
+// The shape follows the area: residential gives a circle, industry and offices a triangle, centre a square, etc.
+// The measure is the location quotient: share of the category here compared with the city average.
+function localType(x, y, rad) {
+  const { sh, n } = localShares(x, y, rad), avg = 1 / (NX * NY);
+  let best = "R", bv = -1;
+  for (const c of TYPES) {
+    const lq = n ? sh[c] / (n * avg) : 0;
+    const sc = Math.log(1 + Math.min(lq, 12)) * LOCAL_BIAS[c];
+    if (sc > bv) { bv = sc; best = c; }
+  }
+  return best;
+}
+function wishMix(x, y, type) {
+  // trip purpose (from where to where) times supply: how much of each category is within reach (gravity)
+  const m = Object.fromEntries(TYPES.map(c => [c, 0]));
+  for (let j = 0; j < NY; j++) for (let i = 0; i < NX; i++) {
+    const k = cellIdx(i, j);
+    const d = Math.hypot(cx(i) - x, cy(j) - y);
+    if (d < 500) continue;
+    const f = 1 / (1 + (d / 2500) ** 2);
+    for (const c of TYPES) m[c] += norm[c][k] * f;
+  }
+  let sum = 0;
+  for (const c of TYPES) { m[c] *= (TRIP[type] || TRIP.R)[c]; sum += m[c]; }
+  for (const c of TYPES) m[c] = sum ? m[c] / sum : 1 / TYPES.length;
+  return m;
+}
+function nearestPlace(x, y) {
+  let best = null, bd = 1e12;
+  for (const p of D.places) { const d = Math.hypot(p[0] - x, p[1] - y) * (1 + p[3] * 0.0); if (d < bd) { bd = d; best = p; } }
+  return best && bd < 3500 ? best[2] : "";
+}
+function addStation(x, y, type, name, hbf, stop) {
+  if (stop) stop.used = true;
+  const ci = Math.floor((x - MINX) / CELL), cj = Math.floor((y - MINY) / CELL);
+  const st = {
+    id: S.nextId++, x, y, type, name: name || (stop && stop.name) || nearestPlace(x, y), hbf: !!hbf,
+    pax: [], timer: 0, born: S.t, spawnAcc: Math.random() * 3,
+    act: ci >= 0 && cj >= 0 && ci < NX && cj < NY ? actSm[cellIdx(ci, cj)] : 0,
+    mix: wishMix(x, y, type),
+  };
+  if (hbf) st.act = Math.max(st.act, refAct * 1.6);
+  S.stations.push(st);
+  S.netVer++;
+  return st;
+}
+// The open stop with the highest built-up demand that keeps its distance to existing stations
+function pickDemandStop(minD) {
+  let best = -1, bd = minD;
+  STOPS.forEach((st, k) => {
+    if (!stopOpen(st) || st.act <= 0 || S.sd[k] <= bd) return;
+    if (S.stations.some(s => Math.hypot(s.x - st.x, s.y - st.y) < CFG.minStationDist)) return;
+    best = k; bd = S.sd[k];
+  });
+  return best < 0 ? null : { k: best, d: bd };
+}
+const DEMAND_NEEDED = 10; // demand that has to build up at a stop before it opens
+function trySpawnStation(force) {
+  const hb = S.stations[0]; let best = -1;
+  if (!force) { const c = pickDemandStop(DEMAND_NEEDED); if (c) best = c.k; }
+  else {
+    // start phase: the busiest stops near the main station, preferably with a shape that does not exist yet
+    const have = new Set(S.stations.map(s => s.type));
+    for (const wantNew of [true, false]) {
+      let bd = 0;
+      STOPS.forEach((st, k) => {
+        if (!stopOpen(st) || st.act <= bd) return;
+        const dh = Math.hypot(st.x - hb.x, st.y - hb.y);
+        if (dh > 3200 || dh < CFG.minStationDist) return;
+        if (S.stations.some(s => Math.hypot(s.x - st.x, s.y - st.y) < CFG.minStationDist)) return;
+        if (wantNew && have.has(localType(st.x, st.y, 500))) return;
+        best = k; bd = st.act;
+      });
+      if (best >= 0) break;
+    }
+  }
+  if (best < 0) return false;
+  const stop = STOPS[best];
+  const st = addStation(stop.x, stop.y, localType(stop.x, stop.y, 500), null, false, stop);
+  STOPS.forEach((o, k) => { if (Math.hypot(o.x - stop.x, o.y - stop.y) < CFG.coverRadius) S.sd[k] = 0; });
+  S.lastSpawn = S.t;
+  toast(`New stop: ${st.name || "Stop"}`);
+  return true;
+}
+
+/* ============================================================ Routes and costs */
+function routeKey(a, b) { return a < b ? a + "-" + b : b + "-" + a; }
+const routeCache = new Map();
+/* ---------- Street graph (OSM): junctions and street segments, routing with A* */
+const ROADS = window.CITY_ROADS || null;
+const ROAD_W = [0.85, 0.9, 1.0, 1.1, 1.2];   // travel-cost factor per street class: big streets are preferred a little
+let G = null;
+if (ROADS && ROADS.e && ROADS.e.length) {
+  const nn = ROADS.n.length / 2, X = new Float32Array(nn), Y = new Float32Array(nn);
+  for (let i = 0; i < nn; i++) { X[i] = ROADS.n[2 * i]; Y[i] = ROADS.n[2 * i + 1]; }
+  const adj = Array.from({ length: nn }, () => []);
+  const E = ROADS.e.map(([a, b, cls, mid]) => {
+    let len = 0, px = X[a], py = Y[a];
+    for (let i = 0; i < mid.length; i += 2) { len += Math.hypot(mid[i] - px, mid[i + 1] - py); px = mid[i]; py = mid[i + 1]; }
+    len += Math.hypot(X[b] - px, Y[b] - py);
+    return { a, b, mid, len, w: len * ROAD_W[cls] };
+  });
+  E.forEach((e, k) => { adj[e.a].push([e.b, k]); adj[e.b].push([e.a, k]); });
+  // only the largest connected part of the network is used (small islands would trap a route)
+  const comp = new Int32Array(nn).fill(-1); let bestC = -1, bestSize = 0, cc = 0;
+  for (let i = 0; i < nn; i++) {
+    if (comp[i] >= 0) continue;
+    let size = 0; const st = [i]; comp[i] = cc;
+    while (st.length) { const u = st.pop(); size++; for (const [v] of adj[u]) if (comp[v] < 0) { comp[v] = cc; st.push(v); } }
+    if (size > bestSize) { bestSize = size; bestC = cc; } cc++;
+  }
+  const GC = 200, grid = new Map();
+  for (let i = 0; i < nn; i++) {
+    if (comp[i] !== bestC) continue;
+    const k = Math.floor(X[i] / GC) + "," + Math.floor(Y[i] / GC); let arr = grid.get(k); if (!arr) grid.set(k, arr = []); arr.push(i);
+  }
+  G = { nn, X, Y, adj, E, grid, GC };
+}
+function nearestNode(x, y, maxR) {
+  const gx = Math.floor(x / G.GC), gy = Math.floor(y / G.GC), R = Math.ceil(maxR / G.GC);
+  let best = -1, bd = maxR;
+  for (let i = gx - R; i <= gx + R; i++) for (let j = gy - R; j <= gy + R; j++) {
+    const arr = G.grid.get(i + "," + j); if (!arr) continue;
+    for (const n of arr) { const d = Math.hypot(G.X[n] - x, G.Y[n] - y); if (d < bd) { bd = d; best = n; } }
+  }
+  return best;
+}
+// Shortest way along the streets between two points; null when the street network does not connect them sensibly
+function roadPath(x0, y0, x1, y1) {
+  const s = nearestNode(x0, y0, 350), t = nearestNode(x1, y1, 350);
+  if (s < 0 || t < 0) return null;
+  if (s === t) return [[x0, y0], [G.X[s], G.Y[s]], [x1, y1]];
+  const { X, Y, adj, E, nn } = G, tx = X[t], ty = Y[t];
+  const dist = new Float32Array(nn).fill(Infinity), prevN = new Int32Array(nn).fill(-1), prevE = new Int32Array(nn).fill(-1);
+  const hk = [], hv = [];   // binary heap of [priority, node]
+  const push = (k, v) => { let i = hk.length; hk.push(k); hv.push(v); while (i > 0) { const p = (i - 1) >> 1; if (hk[p] <= k) break; hk[i] = hk[p]; hv[i] = hv[p]; i = p; } hk[i] = k; hv[i] = v; };
+  const pop = () => {
+    const v = hv[0], lk = hk.pop(), lv = hv.pop(), n = hk.length;
+    if (n) { let i = 0; for (;;) { let c = 2 * i + 1; if (c >= n) break; if (c + 1 < n && hk[c + 1] < hk[c]) c++; if (hk[c] >= lk) break; hk[i] = hk[c]; hv[i] = hv[c]; i = c; } hk[i] = lk; hv[i] = lv; }
+    return v;
+  };
+  dist[s] = 0; push(0.85 * Math.hypot(X[s] - tx, Y[s] - ty), s);
+  const done = new Uint8Array(nn);
+  while (hk.length) {
+    const u = pop(); if (done[u]) continue; done[u] = 1;
+    if (u === t) break;
+    for (const [v, k] of adj[u]) {
+      const nd = dist[u] + E[k].w;
+      if (nd < dist[v]) { dist[v] = nd; prevN[v] = u; prevE[v] = k; push(nd + 0.85 * Math.hypot(X[v] - tx, Y[v] - ty), v); }
+    }
+  }
+  if (prevN[t] < 0) return null;
+  const chain = []; for (let v = t; v !== s; v = prevN[v]) chain.push([prevN[v], v, prevE[v]]);
+  chain.reverse();
+  const pts = [[x0, y0], [X[s], Y[s]]];
+  for (const [u, v, k] of chain) {
+    const e = E[k], mid = [];
+    for (let i = 0; i < e.mid.length; i += 2) mid.push([e.mid[i], e.mid[i + 1]]);
+    if (e.a !== u) mid.reverse();
+    for (const m of mid) pts.push(m);
+    pts.push([X[v], Y[v]]);
+  }
+  pts.push([x1, y1]);
+  const out = [pts[0]];
+  for (let i = 1; i < pts.length; i++) if (Math.hypot(pts[i][0] - out[out.length - 1][0], pts[i][1] - out[out.length - 1][1]) > 0.5) out.push(pts[i]);
+  let len = 0; for (let i = 1; i < out.length; i++) len += Math.hypot(out[i][0] - out[i - 1][0], out[i][1] - out[i - 1][1]);
+  if (out.length < 2 || len > 3.5 * Math.hypot(x1 - x0, y1 - y0) + 600) return null;   // absurd detour: use the direct line instead
+  return out;
+}
+// Direct (45 degree) line, used when no street route exists and for cheap cost estimates in the network proposal
+function octRoute(A, B) {
+  const dx = B.x - A.x, dy = B.y - A.y, sx = Math.sign(dx) || 1, sy = Math.sign(dy) || 1;
+  const diag = Math.min(Math.abs(dx), Math.abs(dy));
+  const mk = (mid) => (mid ? [[A.x, A.y], mid, [B.x, B.y]] : [[A.x, A.y], [B.x, B.y]]);
+  let cands = [];
+  if (diag < 1 || Math.abs(Math.abs(dx) - Math.abs(dy)) < 1 || Math.abs(dx) < 1 || Math.abs(dy) < 1) cands = [mk(null)];
+  else cands = [mk([A.x + sx * diag, A.y + sy * diag]), mk([B.x - sx * diag, B.y - sy * diag])];
+  let best = null;
+  for (const pts of cands) {
+    const info = measure(pts);
+    if (!best || info.bridgeLen < best.bridgeLen - 1) best = { pts, ...info };
+  }
+  return best;
+}
+const quickCache = new Map();
+function clearRoutes() { routeCache.clear(); quickCache.clear(); }
+function getRouteQuick(aId, bId) {
+  const key = routeKey(aId, bId);
+  if (quickCache.has(key)) return quickCache.get(key);
+  const lo = Math.min(aId, bId), hi = Math.max(aId, bId);
+  const r = octRoute(S.stations.find(s => s.id === lo), S.stations.find(s => s.id === hi));
+  r.key = key; r.lo = lo; r.hi = hi; quickCache.set(key, r); return r;
+}
+function getRoute(aId, bId) {
+  const key = routeKey(aId, bId);
+  if (routeCache.has(key)) return routeCache.get(key);
+  const lo = Math.min(aId, bId), hi = Math.max(aId, bId);
+  const A = S.stations.find(s => s.id === lo), B = S.stations.find(s => s.id === hi);
+  const viaStreets = G && CFG.followStreets ? roadPath(A.x, A.y, B.x, B.y) : null;
+  const best = viaStreets ? { pts: viaStreets, ...measure(viaStreets) } : octRoute(A, B);
+  // averaged normals for parallel lines
+  const nrm = best.pts.map((p, i) => {
+    const a = best.pts[Math.max(0, i - 1)], b = best.pts[Math.min(best.pts.length - 1, i + 1)];
+    const tx = b[0] - a[0], ty = b[1] - a[1], L = Math.hypot(tx, ty) || 1;
+    return [-ty / L, tx / L];
+  });
+  best.nrm = nrm; best.key = key; best.lo = lo; best.hi = hi; best.streets = !!viaStreets;
+  routeCache.set(key, best);
+  return best;
+}
+function measure(pts) {
+  const cum = [0]; let len = 0;
+  for (let i = 1; i < pts.length; i++) { len += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); cum.push(len); }
+  const step = 8; let bridgeLen = 0; const bridges = []; let cur = null;
+  for (let d = 0; d <= len; d += step) {
+    const p = pointOn(pts, cum, d), w = isWater(p[0], p[1]);
+    if (w) { bridgeLen += step; if (!cur) cur = [d, d]; else cur[1] = d; }
+    else if (cur) { cur[1] += step; bridges.push(cur); cur = null; }
+  }
+  if (cur) bridges.push(cur);
+  return { len, cum, bridgeLen, bridges };
+}
+function pointOn(pts, cum, d) {
+  if (d <= 0) return pts[0];
+  const len = cum[cum.length - 1]; if (d >= len) return pts[pts.length - 1];
+  let i = 1; while (cum[i] < d) i++;
+  const t = (d - cum[i - 1]) / (cum[i] - cum[i - 1]);
+  return [pts[i - 1][0] + (pts[i][0] - pts[i - 1][0]) * t, pts[i - 1][1] + (pts[i][1] - pts[i - 1][1]) * t];
+}
+function corridorCost(route) { return CFG.cost.corridor(route, CFG.cost); }
+
+/* ---------- offset of parallel lines (screen pixels -> world) */
+function corridorLines(key) { return S.lines.filter(L => lineSegs(L).some(([a, b]) => routeKey(a, b) === key)); }
+function lineOffsetPx(line, key) {
+  const ls = corridorLines(key); const n = ls.length; const idx = ls.indexOf(line);
+  return n > 1 && idx >= 0 ? (idx - (n - 1) / 2) * 6 : 0;
+}
+
+/* ============================================================ Network */
+// Segments of a line. A ring (loop) has one extra segment that closes it.
+const segCount = (L) => L.loop ? L.stops.length : L.stops.length - 1;
+function lineSegs(L) { const n = L.stops.length, out = []; for (let i = 0; i < segCount(L); i++) out.push([L.stops[i], L.stops[(i + 1) % n], i]); return out; }
+function trEnds(L, tr) { const a = L.stops[tr.i], b = L.stops[(tr.i + 1) % L.stops.length]; return tr.dir === 1 ? [a, b] : [b, a]; }
+function stationById(id) { return S.stations.find(s => s.id === id); }
+function netCostNow() {
+  let c = 0, km = 0, bm = 0, br = 0;
+  for (const { route, count } of S.corridors.values()) if (count > 0) { c += corridorCost(route); km += route.len / 1000; bm += route.bridgeLen; br += route.bridges.length; }
+  const used = new Set(); S.lines.forEach(L => L.stops.forEach(s => used.add(s)));
+  const trains = S.lines.reduce((a, L) => a + L.trains.length, 0);
+  return { total: c + used.size * CFG.cost.station + trains * CFG.cost.train, km, bridgeM: bm, bridges: br, stations: used.size, trains };
+}
+function useCorridor(a, b) {
+  const route = getRoute(a, b);
+  let c = S.corridors.get(route.key);
+  if (!c) { c = { route, count: 0 }; S.corridors.set(route.key, c); }
+  if (c.count === 0) { // is newly built
+    S.spent.track += route.len / 1000 * CFG.cost.perKm;
+    S.spent.bridge += route.bridgeLen * CFG.cost.bridgePerM;
+    S.spent.km += route.len / 1000; S.spent.bridgeM += route.bridgeLen; S.spent.bridges += route.bridges.length;
+  }
+  c.count++;
+}
+function releaseCorridor(a, b) { const c = S.corridors.get(routeKey(a, b)); if (c) c.count = Math.max(0, c.count - 1); }
+function chargeStation(id) {
+  if (!S.builtStations.has(id)) { S.builtStations.add(id); S.spent.station += CFG.cost.station; S.spent.stations++; }
+}
+function inAnyLine(id) { return S.lines.some(L => L.stops.includes(id)); }
+
+function freeColor() { const used = new Set(S.lines.map(L => L.color)); return COLORS.find(c => !used.has(c)); }
+function createLine(aId, bId) {
+  const color = freeColor(); if (!color) { toast("Alle Linien sind belegt"); return null; }
+  const L = { id: S.nextId++, color, stops: [aId, bId], trains: [] };
+  S.lines.push(L);
+  chargeStation(aId); chargeStation(bId); useCorridor(aId, bId);
+  if (S.pool > 0) { S.pool--; addTrain(L); }
+  S.netVer++; buildChips(); refreshHud();
+  return L;
+}
+function extendLine(L, atEnd, newId) {
+  const last = atEnd ? L.stops[L.stops.length - 1] : L.stops[0];
+  if (atEnd) L.stops.push(newId); else L.stops.unshift(newId);
+  chargeStation(newId); useCorridor(last, newId);
+  // vehicle positions: shift indices when extending at the front
+  if (!atEnd) L.trains.forEach(t => { t.i++; });
+  S.netVer++; refreshHud();
+}
+function retractLine(L, atEnd) {
+  if (L.stops.length <= 2) { deleteLine(L); return; }
+  const removed = atEnd ? L.stops[L.stops.length - 1] : L.stops[0];
+  const next = atEnd ? L.stops[L.stops.length - 2] : L.stops[1];
+  releaseCorridor(removed, next);
+  if (atEnd) L.stops.pop(); else L.stops.shift();
+  const nStops = L.stops.length;
+  L.trains.forEach(t => {
+    if (!atEnd) t.i--;
+    if (t.i < 0) { t.i = 0; t.d = 0; }
+    if (t.i > nStops - 2) { t.i = nStops - 2; t.d = 0; }
+  });
+  S.netVer++; refreshHud();
+}
+function insertStop(L, k, id) {
+  // inserts the stop between stops[k-1] and stops[k] (k = n closes the ring segment)
+  const a = L.stops[k - 1], b = L.stops[k % L.stops.length];
+  releaseCorridor(a, b);
+  L.stops.splice(k, 0, id);
+  chargeStation(id); useCorridor(a, id); useCorridor(id, b);
+  L.trains.forEach(t => {
+    if (t.i >= k) t.i++;
+    else if (t.i === k - 1) { t.d = 0; if (t.dir === -1) t.i = k; }
+  });
+  S.netVer++; refreshHud();
+}
+function closeLoop(L) {
+  useCorridor(L.stops[L.stops.length - 1], L.stops[0]);
+  L.loop = true;
+  L.trains.forEach((t, k) => { t.dir = k % 2 ? -1 : 1; });
+  S.netVer++; refreshHud(); toast("Ring line closed");
+}
+function removeStop(L, k) {
+  const n = L.stops.length;
+  if (n <= 2) { deleteLine(L); return; }
+  if (L.loop) {
+    const a = L.stops[(k - 1 + n) % n], id = L.stops[k], b = L.stops[(k + 1) % n];
+    releaseCorridor(a, id); releaseCorridor(id, b);
+    L.stops.splice(k, 1);
+    if (n === 3) L.loop = false;           // two stops left: plain line, the ring-closing corridor stays as its only segment
+    else useCorridor(a, b);
+    L.trains.forEach(t => {
+      if (n === 3) { t.i = 0; t.d = 0; t.dir = 1; return; }
+      if (k > 0) { if (t.i > k) t.i--; else if (t.i === k || t.i === k - 1) { t.i = k - 1; t.d = 0; } }
+      else { if (t.i === 0 || t.i === n - 1) { t.i = n - 2; t.d = 0; } else t.i--; }
+    });
+    S.netVer++; refreshHud(); return;
+  }
+  if (k === 0) { retractLine(L, false); return; }
+  if (k === n - 1) { retractLine(L, true); return; }
+  const a = L.stops[k - 1], id = L.stops[k], b = L.stops[k + 1];
+  releaseCorridor(a, id); releaseCorridor(id, b); useCorridor(a, b);
+  L.stops.splice(k, 1);
+  L.trains.forEach(t => {
+    if (t.i > k) t.i--;
+    else if (t.i === k || t.i === k - 1) { t.i = k - 1; t.d = 0; }
+  });
+  S.netVer++; refreshHud();
+}
+function deleteLine(L) {
+  if (S.sel === L.id) S.sel = null;
+  for (const [a, b] of lineSegs(L)) releaseCorridor(a, b);
+  // passengers on vehicles get off at the nearest stop (simplified)
+  L.trains.forEach(t => { const st = stationById(L.stops[Math.min(t.i, L.stops.length - 1)]); if (st) t.pax.forEach(p => st.pax.push(p)); S.pool++; });
+  S.lines = S.lines.filter(x => x !== L);
+  S.netVer++; buildChips(); refreshHud();
+}
+function addTrain(L) {
+  // on a ring the vehicles alternate direction, so both ways around are served
+  const dir = L.loop && L.trains.length % 2 ? -1 : 1;
+  L.trains.push({ line: L, i: 0, dir, d: 0, dwell: 0.6, pax: [], arrivedAt: -1 });
+  S.spent.train += CFG.cost.train; S.spent.trains++; S.netVer++;
+}
+function removeTrain(L) {
+  if (!L.trains.length) return;
+  const t = L.trains.pop();
+  const st = stationById(L.stops[Math.min(t.i, L.stops.length - 1)]);
+  if (st) t.pax.forEach(p => st.pax.push(p));      // passengers get off at the nearest stop
+  S.pool++; S.netVer++;
+}
+
+/* ---------- Passenger routing */
+let hopCache = { ver: -1, map: new Map() };
+function adjacency() {
+  const adj = new Map(), link = (a, b) => { if (!adj.has(a)) adj.set(a, new Set()); if (!adj.has(b)) adj.set(b, new Set()); adj.get(a).add(b); };
+  for (const L of S.lines) {
+    const dirs = new Set(L.trains.map(t => t.dir));
+    for (const [a, b] of lineSegs(L)) {
+      if (!L.loop || dirs.size !== 1) { link(a, b); link(b, a); }   // both ways (or no vehicle yet)
+      else if (dirs.has(1)) link(a, b); else link(b, a);            // a ring with vehicles in one direction only
+    }
+  }
+  return adj;
+}
+function nextHop(stId, type) {
+  if (hopCache.ver !== S.netVer) { hopCache = { ver: S.netVer, map: new Map(), adj: adjacency() }; }
+  const key = stId + type;
+  if (hopCache.map.has(key)) return hopCache.map.get(key);
+  const adj = hopCache.adj; let res = null;
+  if (adj.has(stId)) {
+    const prev = new Map([[stId, null]]); const q = [stId];
+    while (q.length) {
+      const cur = q.shift();
+      if (cur !== stId && stationById(cur).type === type) {
+        let h = cur; while (prev.get(h) !== stId) h = prev.get(h); res = h; break;
+      }
+      for (const nb of adj.get(cur) || []) if (!prev.has(nb)) { prev.set(nb, cur); q.push(nb); }
+    }
+  }
+  hopCache.map.set(key, res);
+  return res;
+}
+
+/* ============================================================ Network proposal */
+const PROP = { L0: 80, maxStops: 8, stopRatio: 0.2, discount: 0.2 };
+function proposeNetwork() {
+  const sts = S.stations, n = sts.length;
+  const free = COLORS.filter(c => !S.lines.some(l => l.color === c));
+  if (!free.length) { toast("Alle Linien sind belegt"); return; }
+  if (n < 2) { toast("Zu wenige Halte"); return; }
+  const cnt = Object.fromEntries(TYPES.map(c => [c, 0])); sts.forEach(x => cnt[x.type]++);
+  // travel relations: gravity from activity, wish distribution and distance
+  const F = sts.map(() => new Float64Array(n));
+  for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
+    const a = sts[i], b = sts[j], d = Math.hypot(a.x - b.x, a.y - b.y);
+    const ab = (a.act / refAct) * a.mix[b.type] / Math.max(1, cnt[b.type] - (a.type === b.type ? 1 : 0));
+    const ba = (b.act / refAct) * b.mix[a.type] / Math.max(1, cnt[a.type] - (a.type === b.type ? 1 : 0));
+    F[i][j] = F[j][i] = (ab + ba) / (1 + (d / 4000) ** 2);
+  }
+  const idx = new Map(sts.map((x, i) => [x.id, i]));
+  const inNet = new Set(), builtKeys = new Set();
+  for (const L of S.lines) {
+    const ix = L.stops.map(id => idx.get(id));
+    ix.forEach(i => inNet.add(i));
+    for (let a = 0; a < ix.length; a++) for (let b = a + 1; b < ix.length; b++) { F[ix[a]][ix[b]] *= PROP.discount; F[ix[b]][ix[a]] *= PROP.discount; }
+    for (const [a_, b_] of lineSegs(L)) builtKeys.add(routeKey(a_, b_));
+  }
+  const stBuilt = (i) => inNet.has(i) || S.builtStations.has(sts[i].id);
+  const edgeCost = (i, j) => {
+    const r = getRouteQuick(sts[i].id, sts[j].id);
+    let c = builtKeys.has(r.key) ? 0 : corridorCost(r);
+    if (!stBuilt(i)) c += CFG.cost.station;
+    if (!stBuilt(j)) c += CFG.cost.station;
+    return c;
+  };
+  const lines = [];
+  for (const color of free) {
+    // seed pair: much traffic, low cost; with a network it has to touch it, otherwise it starts at the main station
+    let seed = null, sv = 0;
+    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
+      if (inNet.size ? !(inNet.has(i) || inNet.has(j)) : !(i === 0 || j === 0)) continue;
+      const v = F[i][j] / (edgeCost(i, j) + PROP.L0);
+      if (v > sv) { sv = v; seed = [i, j]; }
+    }
+    if (!seed || sv <= 0) break;
+    const line = seed.slice();
+    while (line.length < PROP.maxStops) {
+      let best = null, bs = 0;
+      for (let c = 0; c < n; c++) {
+        if (line.includes(c)) continue;
+        let gain = 0; for (const m of line) gain += F[c][m];
+        for (const atEnd of [true, false]) {
+          const e = atEnd ? line[line.length - 1] : line[0], pv = atEnd ? line[line.length - 2] : line[1];
+          const ex = sts[e].x - sts[pv].x, ey = sts[e].y - sts[pv].y, cx_ = sts[c].x - sts[e].x, cy_ = sts[c].y - sts[e].y;
+          if (ex * cx_ + ey * cy_ <= 0) continue; // no folding back
+          const sc = gain / (edgeCost(e, c) + PROP.L0);
+          if (sc > bs) { bs = sc; best = { c, atEnd }; }
+        }
+      }
+      if (!best || bs < sv * PROP.stopRatio) break;
+      best.atEnd ? line.push(best.c) : line.unshift(best.c);
+    }
+    // adopt
+    line.forEach(i => inNet.add(i));
+    for (let k = 1; k < line.length; k++) builtKeys.add(routeKey(sts[line[k - 1]].id, sts[line[k]].id));
+    for (let a = 0; a < line.length; a++) for (let b = a + 1; b < line.length; b++) { F[line[a]][line[b]] *= PROP.discount; F[line[b]][line[a]] *= PROP.discount; }
+    lines.push({ color, stops: line.map(i => sts[i].id) });
+    if (inNet.size >= n) break;
+  }
+  if (!lines.length) { toast("No sensible proposal found"); return; }
+  // cost of the preview (track, bridges, new stops)
+  const seen = new Set(), stSeen = new Set(); let cost = 0, bridge = 0, km = 0;
+  for (const L of S.lines) for (const [a_, b_] of lineSegs(L)) seen.add(routeKey(a_, b_));
+  for (const pl of lines) for (let k = 0; k < pl.stops.length; k++) {
+    const id = pl.stops[k];
+    if (!S.builtStations.has(id) && !stSeen.has(id) && !inAnyLine(id)) { stSeen.add(id); cost += CFG.cost.station; }
+    if (!k) continue;
+    const r = getRoute(pl.stops[k - 1], id);
+    if (seen.has(r.key)) continue; seen.add(r.key);
+    cost += corridorCost(r); bridge += r.bridgeLen; km += r.len / 1000;
+  }
+  S.proposal = { lines, cost, bridge, km };
+  $("propTxt").textContent = `Proposal: ${lines.length} ${lines.length === 1 ? "line" : "lines"} · ${km.toFixed(1)} km · ${bridge ? "bridges " + Math.round(bridge) + " m · " : ""}+ €${fmt(cost)}M`;
+  $("prop").style.display = "flex";
+}
+function acceptProposal() {
+  const pr = S.proposal; if (!pr) return;
+  for (const pl of pr.lines) {
+    if (!pl.stops.every(id => stationById(id))) continue;
+    const L = createLine(pl.stops[0], pl.stops[1]); if (!L) break;
+    for (let k = 2; k < pl.stops.length; k++) extendLine(L, true, pl.stops[k]);
+  }
+  clearProposal(); buildChips(); refreshHud();
+}
+function clearProposal() { S.proposal = null; $("prop").style.display = "none"; }
+
+/* ============================================================ Simulation */
+function pickWish(st) {
+  const onNet = inAnyLine(st.id);
+  const present = new Set(S.stations.filter(s => s !== st).map(s => s.type));
+  // Passengers at a connected stop only want to go where the network leads. A lone stop wishes freely.
+  let sum = 0; const w = {};
+  for (const t of TYPES) { w[t] = present.has(t) && (!onNet || nextHop(st.id, t) !== null) ? st.mix[t] : 0; sum += w[t]; }
+  if (!sum) return null;
+  let r = Math.random() * sum;
+  for (const t of TYPES) { r -= w[t]; if (r <= 0) return t; }
+  return TYPES[0];
+}
+function step(dt) {
+  S.t += dt;
+  const wk = Math.floor(S.t / CFG.weekSec) + 1;
+  if (wk > S.week) { S.week = wk; S.pool++; toast(`Week ${wk}: one more vehicle`); buildChips(); }
+  // Demand builds up at real stops that no station covers yet
+  STOPS.forEach((st, k) => {
+    if (!stopOpen(st) || st.act <= 0) return;
+    for (const s of S.stations) if (Math.hypot(s.x - st.x, s.y - st.y) < CFG.coverRadius) return;
+    S.sd[k] += (st.act / refAct) * dt * (1 + S.t / 400);
+  });
+  if (!S.nextT || S.t - S.nextT > 0.4) {
+    S.nextT = S.t; const c = pickDemandStop(0);
+    S.next = c ? { x: STOPS[c.k].x, y: STOPS[c.k].y, f: Math.min(1, c.d / DEMAND_NEEDED) } : null;
+  }
+  const gap = S.stations.length < 6 ? 20 : Math.max(CFG.spawnGapMin, CFG.spawnGap - S.stations.length * 0.5);
+  if (S.t - S.lastSpawn >= gap) trySpawnStation(false);
+
+  const growth = 1 + S.t / CFG.growthSec;
+  for (const st of S.stations) {
+    const rate = CFG.paxRate * Math.min(2, Math.max(0.25, st.act / refAct)) * growth;
+    st.spawnAcc += dt * rate;
+    while (st.spawnAcc >= 1) {
+      st.spawnAcc -= 1;
+      const want = pickWish(st);
+      if (want) st.pax.push({ want, t: S.t });
+    }
+    if (st.pax.length >= CFG.stationCap) st.timer += dt; else st.timer = Math.max(0, st.timer - dt * 1.5);
+    if (st.timer >= CFG.overcrowdSec && !S.plan && !S.over) { gameOver(st); return; }
+  }
+  for (const L of S.lines) for (const tr of L.trains) moveTrain(L, tr, dt);
+}
+function moveTrain(L, tr, dt) {
+  const n = L.stops.length, sc = segCount(L); if (sc < 1) return;
+  if (tr.i > sc - 1) { tr.i = sc - 1; tr.d = 0; }
+  if (tr.dwell > 0) { tr.dwell -= dt; return; }
+  const [from, to] = trEnds(L, tr);
+  const route = getRoute(from, to);
+  tr.d += CFG.trainSpeed * dt;
+  if (tr.d < route.len) return;
+  tr.d = 0;
+  if (L.loop) tr.i = tr.dir === 1 ? (tr.i + 1) % n : (tr.i - 1 + n) % n;
+  else if (tr.dir === 1) { if (tr.i + 1 < n - 1) tr.i++; else tr.dir = -1; }
+  else { if (tr.i > 0) tr.i--; else tr.dir = 1; }
+  const nextStop = trEnds(L, tr)[1];
+  tr.dwell = 0.4 + 0.18 * exchange(stationById(to), tr, nextStop);
+}
+function exchange(st, tr, nextStop) {
+  let moved = 0; const keep = [];
+  for (const p of tr.pax) {
+    if (st.type === p.want) { S.score++; S.scoreBy[p.want]++; moved++; continue; }
+    const h = nextHop(st.id, p.want);
+    if (h !== null && h !== nextStop) { st.pax.push(p); moved++; continue; }
+    keep.push(p);
+  }
+  tr.pax = keep;
+  const wait = [];
+  for (const p of st.pax) {
+    if (tr.pax.length < CFG.trainCap && nextHop(st.id, p.want) === nextStop) { tr.pax.push(p); moved++; } else wait.push(p);
+  }
+  st.pax = wait;
+  return moved;
+}
+function gameOver(st) {
+  S.over = true; S.paused = true; syncTools();
+  showSummary(`Game over: ${st.name || "a stop"} is overcrowded`, true);
+}
+
+/* ============================================================ Camera and drawing */
+const cv = document.getElementById("c"), g = cv.getContext("2d");
+let W = 0, H = 0, DPR = 1;
+const cam = { s: 0.1, cx: D.hbf[0], cy: D.hbf[1] };
+let userCam = false;
+function resize() {
+  DPR = window.devicePixelRatio || 1; W = innerWidth; H = innerHeight;
+  cv.width = W * DPR; cv.height = H * DPR;
+}
+addEventListener("resize", resize); resize();
+const sx = (x) => (x - cam.cx) * cam.s + W / 2, sy = (y) => -(y - cam.cy) * cam.s + H / 2;
+const wxs = (px) => (px - W / 2) / cam.s + cam.cx, wys = (py) => -(py - H / 2) / cam.s + cam.cy;
+function autoCam(dt) {
+  if (userCam) return;
+  let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+  for (const s of S.stations) { x0 = Math.min(x0, s.x); x1 = Math.max(x1, s.x); y0 = Math.min(y0, s.y); y1 = Math.max(y1, s.y); }
+  const w = Math.max(5000, x1 - x0 + 3200), h = Math.max(4000, y1 - y0 + 3200);
+  const ts = Math.min(W / w, (H - 90) / h), tx = (x0 + x1) / 2, ty = (y0 + y1) / 2;
+  const k = Math.min(1, dt * 2.5);
+  cam.s += (ts - cam.s) * k; cam.cx += (tx - cam.cx) * k; cam.cy += (ty - cam.cy) * k;
+}
+function shape(type, x, y, r) {
+  g.beginPath();
+  if (type === "R") g.arc(x, y, r, 0, Math.PI * 2);
+  else if (type === "W") { g.moveTo(x, y - r * 1.2); g.lineTo(x + r * 1.05, y + r * 0.85); g.lineTo(x - r * 1.05, y + r * 0.85); g.closePath(); }
+  else if (type === "B") { g.moveTo(x, y - r * 1.2); g.lineTo(x + r * 1.2, y); g.lineTo(x, y + r * 1.2); g.lineTo(x - r * 1.2, y); g.closePath(); }
+  else if (type === "F") { for (let k = 0; k < 5; k++) { const an = -Math.PI / 2 + k * 2 * Math.PI / 5; k ? g.lineTo(x + Math.cos(an) * r * 1.15, y + Math.sin(an) * r * 1.15) : g.moveTo(x + Math.cos(an) * r * 1.15, y + Math.sin(an) * r * 1.15); } g.closePath(); }
+  else g.rect(x - r * 0.9, y - r * 0.9, r * 1.8, r * 1.8);
+}
+function offPt(route, d, offW) {
+  const p = pointOn(route.pts, route.cum, d);
+  let i = 1; while (i < route.cum.length - 1 && route.cum[i] < d) i++;
+  const a = route.pts[i - 1], b = route.pts[i], L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+  return [p[0] + (-(b[1] - a[1]) / L) * offW, p[1] + ((b[0] - a[0]) / L) * offW];
+}
+function strokeRoute(route, offPx, from, to) {
+  const o = offPx / cam.s;
+  g.beginPath();
+  if (from === undefined) {
+    route.pts.forEach((p, i) => { const q = [p[0] + route.nrm[i][0] * o, p[1] + route.nrm[i][1] * o]; i ? g.lineTo(sx(q[0]), sy(q[1])) : g.moveTo(sx(q[0]), sy(q[1])); });
+  } else {
+    for (let d = from, first = true; ; d += 10) {
+      const dd = Math.min(d, to), q = offPt(route, dd, o);
+      first ? g.moveTo(sx(q[0]), sy(q[1])) : g.lineTo(sx(q[0]), sy(q[1])); first = false;
+      if (dd >= to) break;
+    }
+  }
+  g.stroke();
+}
+/* ---------- Basemap: the same combination as the route visualization prototype:
+   Esri World Light Gray (neutral base) plus OpenStreetMap detail that fades in when zooming in. */
+const PJ = D.proj || { lat0: (D.bbox[0] + D.bbox[2]) / 2, lon0: (D.bbox[1] + D.bbox[3]) / 2, kx: 111320 * Math.cos(((D.bbox[0] + D.bbox[2]) / 2) * Math.PI / 180), ky: 110947 };
+const SIMPLE_URL = (z, x, y) => `https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/${z}/${y}/${x}`;
+const DETAIL_URL = location.protocol.startsWith("http") ? (z, x, y) => `https://tile.openstreetmap.org/${z}/${x}/${y}.png` : null;
+const tileCache = new Map();
+function tileOf(layer, urlFn, z, x, y) {
+  const k = layer + z + "/" + x + "/" + y; let t = tileCache.get(k);
+  if (!t) {
+    t = { ok: false, img: new Image() }; t.img.onload = () => { t.ok = true; }; t.img.src = urlFn(z, x, y);
+    tileCache.set(k, t); if (tileCache.size > 800) tileCache.delete(tileCache.keys().next().value);
+  }
+  return t;
+}
+const tLon = (x, z) => x / 2 ** z * 360 - 180;
+const tLat = (y, z) => { const n = Math.PI - 2 * Math.PI * y / 2 ** z; return 180 / Math.PI * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n))); };
+const mX = (lon) => (lon - PJ.lon0) * PJ.kx, mY = (lat) => (lat - PJ.lat0) * PJ.ky;
+function drawTileLayer(layer, urlFn, z, alpha) {
+  const lonA = PJ.lon0 + wxs(0) / PJ.kx, lonB = PJ.lon0 + wxs(W) / PJ.kx, latB = PJ.lat0 + wys(0) / PJ.ky, latA = PJ.lat0 + wys(H) / PJ.ky;
+  const n = 2 ** z, ty = (lat) => Math.floor((1 - Math.asinh(Math.tan(lat * Math.PI / 180)) / Math.PI) / 2 * n);
+  const xa = Math.floor((lonA + 180) / 360 * n), xb = Math.floor((lonB + 180) / 360 * n), ya = ty(latB), yb = ty(latA);
+  if ((xb - xa + 1) * (yb - ya + 1) > 140) return;
+  g.globalAlpha = alpha;
+  for (let x = xa; x <= xb; x++) for (let y = ya; y <= yb; y++) {
+    if (x < 0 || y < 0 || x >= n || y >= n) continue;
+    const t = tileOf(layer, urlFn, z, x, y); if (!t.ok) continue;
+    const x0 = sx(mX(tLon(x, z))), x1 = sx(mX(tLon(x + 1, z))), y0 = sy(mY(tLat(y, z))), y1 = sy(mY(tLat(y + 1, z)));
+    g.drawImage(t.img, x0 - 0.4, y0 - 0.4, x1 - x0 + 0.8, y1 - y0 + 0.8);
+  }
+  g.globalAlpha = 1;
+}
+function drawBasemap() {
+  const zf = Math.log2(156543.03 * Math.cos(PJ.lat0 * Math.PI / 180) * cam.s) + 0.4;
+  const z = Math.max(4, Math.min(16, Math.round(zf)));
+  drawTileLayer("s", SIMPLE_URL, Math.max(3, z - 1), 1);
+  drawTileLayer("s", SIMPLE_URL, z, 1);
+  g.fillStyle = "rgba(244,243,238,0.3)"; g.fillRect(0, 0, W, H);   // soft veil keeps the network readable
+  if (DETAIL_URL) {
+    const a = Math.max(0, Math.min(1, (cam.s - 0.3) / 0.15)) * 0.8;
+    if (a > 0.01) { const zd = Math.max(4, Math.min(18, Math.round(zf))); drawTileLayer("o", DETAIL_URL, Math.max(3, zd - 1), a); drawTileLayer("o", DETAIL_URL, zd, a); }
+  }
+}
+const BG = "#f4f3ee", INK = "#2e2e2e";
+function selLine() { return S.sel ? S.lines.find(l => l.id === S.sel) : null; }
+// Handles of the selected line: middle of every segment (insert a stop) and a detach button at every stop
+function handlesOf(L) {
+  const out = [];
+  for (const [a, b, i] of lineSegs(L)) {
+    const r = getRoute(a, b), o = lineOffsetPx(L, r.key) / cam.s, p = offPt(r, r.len / 2, o);
+    out.push({ seg: i, wx: p[0], wy: p[1], x: sx(p[0]), y: sy(p[1]) });
+  }
+  return out;
+}
+function badgesOf(L) {
+  return L.stops.map((id, k) => { const st = stationById(id), r = st.hbf ? 14 : 11; return { k, x: sx(st.x) + r + 5, y: sy(st.y) - r - 5 }; });
+}
+function lineAt(px, py) {
+  for (let li = S.lines.length - 1; li >= 0; li--) {
+    const L = S.lines[li];
+    for (const [sa, sb] of lineSegs(L)) {
+      const r = getRoute(sa, sb), o = lineOffsetPx(L, r.key) / cam.s;
+      for (let k = 1; k < r.pts.length; k++) {
+        const ax = sx(r.pts[k - 1][0] + r.nrm[k - 1][0] * o), ay = sy(r.pts[k - 1][1] + r.nrm[k - 1][1] * o);
+        const bx = sx(r.pts[k][0] + r.nrm[k][0] * o), by = sy(r.pts[k][1] + r.nrm[k][1] * o);
+        const dx = bx - ax, dy = by - ay, len2 = dx * dx + dy * dy || 1;
+        const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2));
+        if (Math.hypot(px - (ax + dx * t), py - (ay + dy * t)) < 9) return L;
+      }
+    }
+  }
+  return null;
+}
+function draw() {
+  g.setTransform(DPR, 0, 0, DPR, 0, 0);
+  g.fillStyle = BG; g.fillRect(0, 0, W, H);
+  g.imageSmoothingEnabled = true;
+  drawBasemap();
+  if (S.heat) g.drawImage(heat[S.heat], sx(MINX), sy(MINY + NY * CELL), NX * CELL * cam.s, NY * CELL * cam.s);
+  g.lineCap = "round"; g.lineJoin = "round";
+  const sel = selLine(), dim = (L) => sel && sel !== L ? 0.35 : 1;
+  // bridges (underlay)
+  for (const { route, count } of S.corridors.values()) {
+    if (!count) continue;
+    g.strokeStyle = "#5a5a5a"; g.lineWidth = 12;
+    for (const [d0, d1] of route.bridges) strokeRoute(route, 0, d0, Math.min(d1, route.len));
+  }
+  // selection halo
+  if (sel) {
+    g.strokeStyle = "#fff"; g.lineWidth = 15;
+    for (const [a, b] of lineSegs(sel)) { const r = getRoute(a, b); strokeRoute(r, lineOffsetPx(sel, r.key)); }
+  }
+  // Linien
+  g.lineWidth = 7;
+  for (const L of S.lines) {
+    g.strokeStyle = L.color; g.globalAlpha = dim(L);
+    for (const [a, b] of lineSegs(L)) { const r = getRoute(a, b); strokeRoute(r, lineOffsetPx(L, r.key)); }
+  }
+  g.globalAlpha = 1;
+  for (const { route, count } of S.corridors.values()) {
+    if (!count) continue;
+    g.strokeStyle = "#fff"; g.lineWidth = 1.2;
+    for (const [d0, d1] of route.bridges) { g.setLineDash([4, 5]); strokeRoute(route, 0, d0, Math.min(d1, route.len)); g.setLineDash([]); }
+  }
+  // Drag-Vorschau
+  const dr = S.drag;
+  if (dr && dr.moved) {
+    const col = dr.line ? dr.line.color : (freeColor() || "#999");
+    g.globalAlpha = 0.55; g.strokeStyle = col; g.lineWidth = 7;
+    if (dr.mode === "insert") {
+      if (dr.target) { const L = dr.line; strokeRoute(getRoute(L.stops[dr.idx - 1], dr.target.id), 0); strokeRoute(getRoute(dr.target.id, L.stops[dr.idx % L.stops.length]), 0); }
+      else { g.beginPath(); g.moveTo(sx(dr.fromPt[0]), sy(dr.fromPt[1])); g.lineTo(dr.px, dr.py); g.stroke(); }
+    } else if (dr.target) strokeRoute(getRoute(dr.from.id, dr.target.id), 0);
+    else { g.beginPath(); g.moveTo(sx(dr.from.x), sy(dr.from.y)); g.lineTo(dr.px, dr.py); g.stroke(); }
+    g.globalAlpha = 1;
+  }
+  // Netzvorschlag (gestrichelt)
+  if (S.proposal) {
+    g.lineWidth = 6; g.setLineDash([10, 8]); g.globalAlpha = 0.8;
+    for (const pl of S.proposal.lines) {
+      g.strokeStyle = pl.color;
+      for (let k = 1; k < pl.stops.length; k++) strokeRoute(getRoute(pl.stops[k - 1], pl.stops[k]), 0);
+    }
+    g.setLineDash([]); g.globalAlpha = 1;
+  }
+  // where demand emerges next: a faint mark that grows with the demand
+  if (S.next && S.next.f > 0.12) {
+    const nx_ = sx(S.next.x), ny_ = sy(S.next.y), f = S.next.f;
+    g.strokeStyle = INK; g.globalAlpha = 0.12 + 0.28 * f; g.lineWidth = 2; g.setLineDash([3, 4]);
+    g.beginPath(); g.arc(nx_, ny_, 8 + 5 * f, 0, Math.PI * 2); g.stroke(); g.setLineDash([]);
+    g.lineWidth = 3; g.beginPath(); g.arc(nx_, ny_, 8 + 5 * f, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * f); g.stroke();
+    g.globalAlpha = 1;
+  }
+  // Stationen
+  const nLines = new Map();
+  for (const L of S.lines) for (const id of new Set(L.stops)) nLines.set(id, (nLines.get(id) || 0) + 1);
+  for (const st of S.stations) {
+    const x = sx(st.x), y = sy(st.y), r = (st.hbf ? 14 : 11) + ((nLines.get(st.id) || 0) > 1 ? 3 : 0);
+    if (st.timer > 0) {
+      const f = Math.min(1, st.timer / CFG.overcrowdSec);
+      g.strokeStyle = f > 0.6 ? "#e5413c" : "#a9a69c"; g.lineWidth = 4;
+      g.beginPath(); g.arc(x, y, r + 8, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * f); g.stroke();
+    }
+    g.fillStyle = "#fff"; g.strokeStyle = INK; g.lineWidth = 4;
+    shape(st.type, x, y, r); g.fill(); g.stroke();
+    g.fillStyle = INK;
+    st.pax.forEach((p, k) => { shape(p.want, x + r + 11 + (k % 5) * 9, y - 5 + Math.floor(k / 5) * 10, 3.6); g.fill(); });
+    if (S.hover === st || (dr && dr.target === st)) { g.strokeStyle = "#2e2e2e33"; g.lineWidth = 2; shape(st.type, x, y, r + 9); g.stroke(); }
+  }
+  // handles of the selected line
+  if (sel) {
+    for (const h of handlesOf(sel)) {
+      g.fillStyle = "#fff"; g.strokeStyle = sel.color; g.lineWidth = 3;
+      g.beginPath(); g.arc(h.x, h.y, 8, 0, Math.PI * 2); g.fill(); g.stroke();
+      g.strokeStyle = INK; g.lineWidth = 2; g.beginPath(); g.moveTo(h.x - 4, h.y); g.lineTo(h.x + 4, h.y); g.moveTo(h.x, h.y - 4); g.lineTo(h.x, h.y + 4); g.stroke();
+    }
+    for (const b of badgesOf(sel)) {
+      g.fillStyle = INK; g.beginPath(); g.arc(b.x, b.y, 8, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = "#fff"; g.lineWidth = 2; g.beginPath(); g.moveTo(b.x - 3, b.y - 3); g.lineTo(b.x + 3, b.y + 3); g.moveTo(b.x + 3, b.y - 3); g.lineTo(b.x - 3, b.y + 3); g.stroke();
+    }
+  }
+  // vehicles
+  for (const L of S.lines) for (const tr of L.trains) {
+    if (L.stops.length < 2 || tr.i > segCount(L) - 1) continue;
+    const [from, to] = trEnds(L, tr);
+    const r = getRoute(from, to), dc = from === r.lo ? tr.d : r.len - tr.d;
+    const o = lineOffsetPx(L, r.key) / cam.s;
+    const p = offPt(r, Math.max(0, Math.min(r.len, dc)), o), q = offPt(r, Math.max(0, Math.min(r.len, dc + (from === r.lo ? 12 : -12))), o);
+    const ang = Math.atan2(-(q[1] - p[1]), q[0] - p[0]);
+    g.save(); g.translate(sx(p[0]), sy(p[1])); g.rotate(ang); g.globalAlpha = dim(L);
+    g.fillStyle = L.color; g.beginPath(); g.roundRect(-17, -9, 34, 18, 5); g.fill();
+    g.fillStyle = "#fff";
+    tr.pax.forEach((pp, k) => { shape(pp.want, -11 + (k % 4) * 7.4, -4 + Math.floor(k / 4) * 8, 2.8); g.fill(); });
+    g.restore();
+  }
+  // Kostenvorschau beim Ziehen
+  if (dr && dr.moved && dr.target) {
+    let cost = 0; const pairs = dr.mode === "insert" ? [[dr.line.stops[dr.idx - 1], dr.target.id], [dr.target.id, dr.line.stops[dr.idx % dr.line.stops.length]]] : [[dr.from.id, dr.target.id]];
+    let br = 0;
+    for (const [a, b] of pairs) { const route = getRoute(a, b), c = S.corridors.get(route.key); if (!(c && c.count > 0)) { cost += corridorCost(route); br += route.bridgeLen; } }
+    for (const s of dr.mode === "insert" ? [dr.target] : [dr.from, dr.target]) if (!S.builtStations.has(s.id)) cost += CFG.cost.station;
+    g.font = "600 12px -apple-system, sans-serif"; g.textAlign = "left";
+    const txt = `+ €${fmt(cost)}M${br ? ` · bridge ${Math.round(br)} m` : ""}`;
+    g.lineWidth = 4; g.strokeStyle = BG; g.strokeText(txt, dr.px + 16, dr.py - 12);
+    g.fillStyle = INK; g.fillText(txt, dr.px + 16, dr.py - 12);
+  }
+}
+const fmt = (v) => Math.round(v).toLocaleString("en-US");
+
+/* ============================================================ Input */
+function hitStation(px, py) {
+  let best = null, bd = 22;
+  for (const st of S.stations) { const d = Math.hypot(sx(st.x) - px, sy(st.y) - py); if (d < bd) { bd = d; best = st; } }
+  return best;
+}
+let pan = null;
+cv.addEventListener("pointerdown", (e) => {
+  if (S.over) return;
+  cv.setPointerCapture(e.pointerId);
+  const px = e.clientX, py = e.clientY, sel = selLine();
+  document.getElementById("hint").style.opacity = 0;
+  if (sel) {
+    const bd = badgesOf(sel).find(b => Math.hypot(b.x - px, b.y - py) <= 10);
+    if (bd) { const nm = stationById(sel.stops[bd.k]).name || "Stop"; removeStop(sel, bd.k); toast(`${nm} detached from the line`); return; }
+    const mh = handlesOf(sel).find(h => Math.hypot(h.x - px, h.y - py) <= 11);
+    if (mh) { S.drag = { mode: "insert", line: sel, idx: mh.seg + 1, from: null, fromPt: [mh.wx, mh.wy], px, py, target: null, moved: false }; return; }
+  }
+  const st = hitStation(px, py);
+  if (st) {
+    let line = null, atEnd = true;
+    if (!e.shiftKey) {
+      const order = sel ? [sel, ...S.lines.filter(l => l !== sel)] : S.lines;
+      for (const L of order) {
+        if (L.loop) continue;
+        if (L.stops[L.stops.length - 1] === st.id) { line = L; atEnd = true; break; }
+        if (L.stops[0] === st.id) { line = L; atEnd = false; break; }
+      }
+    }
+    S.drag = { mode: line ? "extend" : "new", from: st, fromPt: [st.x, st.y], line, atEnd, px, py, target: null, moved: false };
+  } else pan = { x: px, y: py, moved: false, line: lineAt(px, py) };
+});
+cv.addEventListener("pointermove", (e) => {
+  const px = e.clientX, py = e.clientY;
+  if (S.drag) {
+    const dr = S.drag; dr.px = px; dr.py = py;
+    if (Math.hypot(px - sx(dr.fromPt[0]), py - sy(dr.fromPt[1])) > 8) dr.moved = true;
+    const t = hitStation(px, py); dr.target = t && t !== dr.from ? t : null;
+    hideTip(); return;
+  }
+  if (pan) {
+    if (!pan.moved && Math.hypot(px - pan.x, py - pan.y) < 4) return;
+    pan.moved = true; userCam = true;
+    cam.cx -= (px - pan.x) / cam.s; cam.cy += (py - pan.y) / cam.s; pan.x = px; pan.y = py; return;
+  }
+  const st = hitStation(px, py); S.hover = st;
+  const sel = selLine();
+  const onGrip = sel && (badgesOf(sel).some(b => Math.hypot(b.x - px, b.y - py) <= 10) || handlesOf(sel).some(h => Math.hypot(h.x - px, h.y - py) <= 11));
+  cv.style.cursor = st || onGrip || lineAt(px, py) ? "pointer" : "default";
+  st ? showTip(st, px, py) : hideTip();
+});
+cv.addEventListener("pointerup", (e) => {
+  if (pan) { // click without dragging: select a line or clear the selection
+    if (!pan.moved) { S.sel = pan.line ? pan.line.id : null; buildChips(); }
+    pan = null; return;
+  }
+  const dr = S.drag; S.drag = null; if (!dr || !dr.moved) return;
+  const t = hitStation(e.clientX, e.clientY); if (!t || t === dr.from) return;
+  const L = dr.line;
+  if (dr.mode === "insert") {
+    if (L.stops.includes(t.id)) toast("This stop is already on the line");
+    else insertStop(L, dr.idx, t.id);
+    return;
+  }
+  if (L) {
+    const nb = dr.atEnd ? L.stops[L.stops.length - 2] : L.stops[1];
+    const other = dr.atEnd ? L.stops[0] : L.stops[L.stops.length - 1];
+    if (t.id === nb) retractLine(L, dr.atEnd);
+    else if (t.id === other && L.stops.length >= 3) closeLoop(L);
+    else if (L.stops.includes(t.id)) toast("This stop is already on the line");
+    else extendLine(L, dr.atEnd, t.id);
+  } else { const nl = createLine(dr.from.id, t.id); if (nl) { S.sel = nl.id; buildChips(); } }
+});
+cv.addEventListener("wheel", (e) => {
+  e.preventDefault(); userCam = true;
+  const k = Math.exp(-e.deltaY * 0.0015), mx = wxs(e.clientX), my = wys(e.clientY);
+  cam.s = Math.min(0.8, Math.max(0.02, cam.s * k));
+  cam.cx = mx - (e.clientX - W / 2) / cam.s; cam.cy = my + (e.clientY - H / 2) / cam.s;
+}, { passive: false });
+addEventListener("keydown", (e) => {
+  if (e.code === "Space") { e.preventDefault(); togglePause(); }
+  if (e.code === "Escape") { clearProposal(); S.sel = null; buildChips(); }
+  if ((e.code === "Delete" || e.code === "Backspace") && selLine()) { deleteLine(selLine()); toast("Line deleted"); }
+});
+
+/* ============================================================ Tooltip, toast */
+const tip = document.getElementById("tip");
+function showTip(st, px, py) {
+  const { sh } = localShares(st.x, st.y, CFG.catchRadius);
+  const rn = Math.round(sh.R * tot.R), wn = Math.round(sh.W * tot.W);
+  const pc = (v) => (v * 100).toFixed(1) + " %";
+  tip.innerHTML = `<h4>${st.hbf ? "★ " : ""}${st.name || "Stop"} <span style="font-weight:400;color:#9a978c">${CAT[st.type].glyph} ${CAT[st.type].name}</span></h4>
+   <div style="color:#9a978c;margin-bottom:6px">≈ ${fmt(rn)} residents · ${fmt(wn)} jobs within ${CFG.catchRadius} m</div>
+   <div class="row" style="color:#9a978c;font-size:11px"><span class="lbl"></span><span class="val">Area*</span><span>Passengers want to go to</span></div>` +
+    TYPES.map(c => `<div class="row"><span class="lbl">${CAT[c].glyph} ${CAT[c].name}</span><span class="val">${pc(sh[c])}</span><span class="bar" style="width:${Math.round(st.mix[c] * 70)}px"></span>${Math.round(st.mix[c] * 100)} %</div>`).join("") +
+    `<div style="margin-top:6px;color:#9a978c;font-size:11px">*share of the whole city · Waiting: ${st.pax.length} / ${CFG.stationCap}</div>`;
+  tip.style.display = "block";
+  tip.style.left = Math.min(W - 280, px + 18) + "px"; tip.style.top = Math.min(H - 230, py + 14) + "px";
+}
+function hideTip() { tip.style.display = "none"; }
+let toastT;
+function toast(msg) {
+  const t = document.getElementById("toast"); t.textContent = msg; t.style.opacity = 1;
+  clearTimeout(toastT); toastT = setTimeout(() => t.style.opacity = 0, 2200);
+}
+
+/* ============================================================ HUD */
+const ICON = {
+  pause: '<svg viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></svg>',
+  play: '<svg viewBox="0 0 24 24"><path d="M7 5l12 7-12 7z"/></svg>',
+  speed: (n) => `<svg viewBox="0 0 24 24">${[0, 1, 2].slice(0, n).map(i => `<path d="M${5 + i * 5} 6l5 6-5 6"/>`).join("")}</svg>`,
+  heat: '<svg viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><rect x="13" y="13" width="7" height="7" rx="1"/></svg>',
+  plan: '<svg viewBox="0 0 24 24"><path d="M12 12c-1.5-2-3-3-4.5-3a3 3 0 0 0 0 6c1.5 0 3-1 4.5-3zm0 0c1.5 2 3 3 4.5 3a3 3 0 0 0 0-6c-1.5 0-3 1-4.5 3z"/></svg>',
+  wand: '<svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 16v4M17 18h4"/></svg>',
+  check: '<svg viewBox="0 0 24 24"><path d="M5 12l5 5L20 7"/></svg>',
+  sum: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M15 9.5a3.5 3.5 0 1 0 0 5M8 11h5M8 13h5"/></svg>',
+  neu: '<svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5"/></svg>',
+  minus: '<svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg>',
+  plus: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
+  x: '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+  train: '<svg viewBox="0 0 24 24" style="width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><rect x="5" y="4" width="14" height="13" rx="3"/><path d="M5 11h14M8 21l2-4M16 21l-2-4"/></svg>',
+};
+const $ = (id) => document.getElementById(id);
+function syncTools() {
+  $("bPause").innerHTML = S.paused ? ICON.play : ICON.pause; $("bPause").classList.toggle("on", S.paused);
+  $("bSpeed").innerHTML = ICON.speed(S.speed === 1 ? 1 : S.speed === 2 ? 2 : 3);
+  $("bHeat").classList.toggle("on", S.heat === "all"); $("bPlan").classList.toggle("on", S.plan);
+  document.querySelectorAll("#legend .it").forEach(el => el.classList.toggle("on", S.heat === el.dataset.c));
+}
+function togglePause() { if (S.over) return; S.paused = !S.paused; syncTools(); }
+$("bPause").onclick = togglePause;
+$("bSpeed").onclick = () => { S.speed = S.speed === 1 ? 2 : S.speed === 2 ? 4 : 1; syncTools(); };
+$("bHeat").innerHTML = ICON.heat; $("bHeat").onclick = () => { S.heat = S.heat ? null : "all"; syncTools(); };
+$("bPlan").innerHTML = ICON.plan; $("bPlan").onclick = () => { S.plan = !S.plan; toast(S.plan ? "Planning mode: crowding does not end the game" : "Game mode: crowding ends the game"); syncTools(); };
+$("bProp").innerHTML = ICON.wand; $("bProp").onclick = () => proposeNetwork();
+$("propOk").innerHTML = ICON.check; $("propOk").onclick = acceptProposal;
+$("propNo").innerHTML = ICON.x; $("propNo").onclick = clearProposal;
+$("bSum").innerHTML = ICON.sum; $("bSum").onclick = () => showSummary("Summary", false);
+$("bNew").innerHTML = ICON.neu; $("bNew").onclick = () => { clearRoutes(); newGame(); syncTools(); };
+
+function buildChips() {
+  const box = $("chips"); box.innerHTML = "";
+  COLORS.slice(0, CFG.maxLines).forEach((col, i) => {
+    const L = S.lines.find(l => l.color === col);
+    const el = document.createElement("div"); el.className = "chip" + (L ? " used" : "") + (L && S.sel === L.id ? " sel" : "");
+    el.innerHTML = `<div class="dot" style="background:${col}" title="${L ? "Line " + (i + 1) + " (click to select)" : "Free line slot"}">${L ? L.trains.length : ""}</div>
+      <div class="ctl"><button class="btn sm" title="Add a vehicle (from the depot)">${ICON.plus}</button><button class="btn sm" title="Remove a vehicle (keeps the line)">${ICON.minus}</button><button class="btn sm" title="Delete the whole line">${ICON.x}</button></div>`;
+    if (L) {
+      const [bp, bm, bx] = el.querySelectorAll("button");
+      bm.onclick = () => { if (L.trains.length) { removeTrain(L); buildChips(); refreshHud(); } else toast("No vehicle on this line"); };
+      el.querySelector(".dot").onclick = () => { S.sel = S.sel === L.id ? null : L.id; buildChips(); };
+      bp.onclick = () => { if (S.pool > 0) { S.pool--; addTrain(L); buildChips(); refreshHud(); } else toast("No vehicle in the depot. One more arrives every week."); };
+      bx.onclick = () => deleteLine(L);
+    }
+    box.appendChild(el);
+  });
+}
+let lastHud = -1;
+function refreshHud() {
+  $("sScore").textContent = S.score; $("sWeek").textContent = S.week; $("sStations").textContent = S.stations.length;
+  $("pool").innerHTML = `${ICON.train}<span>${S.pool}</span><small>in depot</small>`;
+  const c = netCostNow();
+  $("cost").innerHTML = `<span>€${fmt(c.total)}M</span><small>network today</small>`;
+}
+function showSummary(title, over) {
+  const c = netCostNow(), sp = S.spent;
+  const track = c.km * CFG.cost.perKm, bridge = c.bridgeM * CFG.cost.bridgePerM;
+  const spentTotal = sp.track + sp.bridge + sp.station + sp.train;
+  const per = S.score ? c.total / S.score : 0;
+  $("card").innerHTML = `<h2>${title}</h2>
+   <p class="sub">Week ${S.week} · ${S.score} passengers arrived (${TYPES.map(c => `${CAT[c].name} ${S.scoreBy[c]}`).join(", ")})</p>
+   <table>
+    <tr><td>Track · ${c.km.toFixed(1)} km</td><td>€${fmt(track)}M</td></tr>
+    <tr><td>Bridges · ${c.bridges} (${fmt(c.bridgeM)} m of water crossed)</td><td>€${fmt(bridge)}M</td></tr>
+    <tr><td>Stops · ${c.stations}</td><td>€${fmt(c.stations * CFG.cost.station)}M</td></tr>
+    <tr><td>Vehicles · ${c.trains}</td><td>€${fmt(c.trains * CFG.cost.train)}M</td></tr>
+    <tr class="total"><td>Network today</td><td>€${fmt(c.total)}M</td></tr>
+   </table>
+   <p class="sub">Built in total, including what was removed: €${fmt(spentTotal)}M${S.score ? ` · €${per.toFixed(2)}M network value per passenger arrived` : ""}</p>
+   <div class="actions">
+     ${over ? '<button class="btn" id="mCont">Continue in planning mode</button>' : '<button class="btn" id="mClose">Close</button>'}
+     <button class="btn" id="mNew">New game</button>
+   </div>`;
+  $("modal").style.display = "grid";
+  if (over) $("mCont").onclick = () => { S.over = false; S.plan = true; S.paused = false; S.stations.forEach(s => s.timer = 0); closeModal(); syncTools(); };
+  else $("mClose").onclick = closeModal;
+  $("mNew").onclick = () => { clearRoutes(); newGame(); syncTools(); };
+}
+function closeModal() { $("modal").style.display = "none"; }
+$("modal").addEventListener("pointerdown", (e) => { if (e.target === $("modal") && !S.over) closeModal(); });
+// City picker: lists every city that was built into data/ (data/cities.js)
+const CITY_LIST = window.CITIES && window.CITIES.length ? window.CITIES : [{ id: window.CITY_ID, title: D.title || D.name }];
+const curCity = CITY_LIST.find(c => c.id === window.CITY_ID) || CITY_LIST[0];
+$("cityName").textContent = D.title || curCity.title; document.title = "Mini Metro · " + (D.title || curCity.title);
+$("cityMenu").innerHTML = CITY_LIST.map(c => `<div class="ci${c.id === curCity.id ? " on" : ""}" data-id="${c.id}"><span>${c.title}</span>${c.id === curCity.id ? "●" : ""}</div>`).join("")
+  + '<small>Another city: run <code>build_data.py --name &lt;id&gt; --title &lt;Name&gt; --bbox &lt;south,west,north,east&gt;</code>. It appears here automatically.</small>';
+$("bCity").onclick = (e) => { e.stopPropagation(); const m = $("cityMenu"); m.style.display = m.style.display === "block" ? "none" : "block"; };
+addEventListener("pointerdown", (e) => { if (!$("city").contains(e.target)) $("cityMenu").style.display = "none"; });
+$("cityMenu").querySelectorAll(".ci").forEach(el => el.onclick = () => {
+  if (el.dataset.id === curCity.id) { $("cityMenu").style.display = "none"; return; }
+  try { localStorage.setItem("metroCity", el.dataset.id); } catch (e) {}
+  location.search = "?city=" + el.dataset.id;
+});
+const SVGSH = { R: '<circle cx="8" cy="8" r="6"/>', W: '<polygon points="8,1.5 14.5,13.5 1.5,13.5"/>', E: '<rect x="2.5" y="2.5" width="11" height="11"/>', B: '<polygon points="8,1 15,8 8,15 1,8"/>', F: '<polygon points="8,1.2 14.8,6.2 12.2,14.2 3.8,14.2 1.2,6.2"/>' };
+$("legend").innerHTML = TYPES.map(c => `<div class="it" data-c="${c}"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">${SVGSH[c]}</svg>${CAT[c].name}</div>`).join("") + "<small>Click to show the demand</small>";
+$("legend").querySelectorAll(".it").forEach(el => el.onclick = () => { S.heat = S.heat === el.dataset.c ? null : el.dataset.c; syncTools(); });
+$("foot").textContent = D.sources + " · Basemap: Esri, HERE, Garmin · " + D.name;
+
+/* ============================================================ Loop */
+let last = performance.now(), hudAcc = 0;
+function frame(now) {
+  const real = Math.min(0.1, (now - last) / 1000); last = now;
+  if (!S.paused && !S.over) {
+    let rest = real * S.speed;
+    while (rest > 0 && !S.over) { const d = Math.min(0.05, rest); step(d); rest -= d; }
+  }
+  autoCam(real);
+  hudAcc += real; if (hudAcc > 0.25) { hudAcc = 0; refreshHud(); }
+  draw();
+  requestAnimationFrame(frame);
+}
+newGame(); syncTools();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
