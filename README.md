@@ -12,6 +12,7 @@ Everything in this repo is public. Only add what is meant to be shown.
 | Route visualization, Hamburg U4 | `map-route-visualization/` | https://ms-ptv.github.io/product-lab-demos/map-route-visualization/?t=3:00&pause |
 | Network timeline and lenses, Hamburg: 16 lines of 4 transport systems (passenger counts simulated) | `map-creation/` | https://ms-ptv.github.io/product-lab-demos/map-creation/?t=8:00 |
 | Mini Metro with real data: Karlsruhe, Hamburg, Berlin | `map-mini-metro/` | https://ms-ptv.github.io/product-lab-demos/map-mini-metro/ |
+| Data services world map: which services give access to data, by country and lens (desk research) | `data-services-map/` | https://ms-ptv.github.io/product-lab-demos/data-services-map/ |
 
 ## Shared data
 
