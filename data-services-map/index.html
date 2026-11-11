@@ -105,6 +105,14 @@ details{margin-top:10px;font-size:12px;color:var(--muted)}
 details summary{cursor:pointer;font-weight:600;color:var(--ink)}
 details ul{padding-left:16px;margin:6px 0 0}
 .empty{font-weight:600}
+.infoq{border:0;background:none;color:var(--accent);cursor:pointer;padding:0;margin:0 0 8px;font-size:13px;display:inline-flex;gap:6px;align-items:center}
+.infoq .i{width:16px;height:16px;border-radius:50%;border:1.5px solid var(--accent);font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;line-height:1}
+.info{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:10px;padding:10px 12px;margin:0 0 10px;font-size:13px}
+.info dl{margin:0;display:grid;grid-template-columns:120px 1fr;gap:4px 12px}
+@media (max-width:600px){.info dl{grid-template-columns:1fr}.info dt{margin-top:6px}}
+.info dt{font-weight:600}
+.info dd{margin:0;color:var(--muted)}
+.info dd.now{color:var(--ink)}
 .foot{margin-top:10px;color:var(--muted);font-size:12px}
 </style>
 </head>
@@ -113,6 +121,8 @@ details ul{padding-left:16px;margin:6px 0 0}
   <h1>What our data services cover</h1>
   <p class="sub">Pick a lens. Services and countries follow it. Status 2026-11-11, desk research only, nothing tested.</p>
   <div class="lenses" id="lenses" role="group" aria-label="Lens"></div>
+  <button class="infoq" id="infoq" type="button" aria-expanded="false" aria-controls="info"><span class="i">i</span><span id="infoqt">What does this lens mean?</span></button>
+  <div class="info" id="info" hidden></div>
   <div class="legend">
     <span class="lead">Access (map colour and chip border):</span>
     <span><i style="background:var(--c-api)"></i>API</span>
@@ -144,10 +154,26 @@ details ul{padding-left:16px;margin:6px 0 0}
    access: "api" | "files" | "manual" | "unclear" | "none"
    Country keys are ISO numeric codes. A country can override access. */
 const LENSES = [
-  {id:"quality", name:"Passenger quality", hint:"Counts, load, delays"},
-  {id:"coverage", name:"Coverage", hint:"Where people live and go"},
-  {id:"robustness", name:"Robustness", hint:"Run times, punctuality"},
-  {id:"cost", name:"Operator cost", hint:"Duty, vehicles, cost rates"}
+  {id:"quality", name:"Passenger quality", hint:"Counts, load, delays",
+   means:"How good the service is for the people who ride it: free seats, waiting time, transfers.",
+   data:"Passenger counts at stops (APC), ticket and card data, delays, surveys.",
+   example:"Which buses are too full at eight in the morning?",
+   gap:"Few open sources outside the USA and Seoul. Most good data stays at the operator."},
+  {id:"coverage", name:"Coverage", hint:"Where people live and go",
+   means:"Who can reach the service, and where people live or travel but have none.",
+   data:"Area data (people, jobs), phone movement data, timetables, map data.",
+   example:"Which neighbourhoods have no stop within walking distance?",
+   gap:"Mostly hints about demand, not counts of real riders."},
+  {id:"robustness", name:"Robustness", hint:"Run times, punctuality",
+   means:"How well the plan holds on a real day: on time, stable run times, transfers that work.",
+   data:"Live vehicle positions and delays (GTFS-RT, SIRI), past run times, road speeds, weather and events.",
+   example:"Which lines run late every day, and where do transfers fail?",
+   gap:"Good open feeds in Europe and several other countries. Thin in much of the Americas. Africa not checked."},
+  {id:"cost", name:"Operator cost", hint:"Duty, vehicles, cost rates",
+   means:"What the service costs the operator: vehicles, drivers, kilometres.",
+   data:"Duty and vehicle data, cost rates, plus passenger load to size capacity.",
+   example:"Can we carry the same demand with fewer vehicles?",
+   gap:"Real cost data sits at the operator. No public service gives it."}
 ];
 const NAMES = {840:"United States",276:"Germany",724:"Spain",620:"Portugal",380:"Italy",250:"France",826:"United Kingdom",484:"Mexico",170:"Colombia",604:"Peru",372:"Ireland",616:"Poland",208:"Denmark",784:"United Arab Emirates",756:"Switzerland",578:"Norway",752:"Sweden",246:"Finland",100:"Bulgaria",32:"Argentina",76:"Brazil",36:"Australia",702:"Singapore",124:"Canada",554:"New Zealand",528:"Netherlands",410:"South Korea",392:"Japan",158:"Taiwan",356:"India",344:"Hong Kong",360:"Indonesia",608:"Philippines",704:"Vietnam",156:"China",682:"Saudi Arabia",376:"Israel",792:"Turkiye"};
 const ACCESS = {api:"API",files:"Files",manual:"Manual import",unclear:"Access unclear",none:"No direct access"};
@@ -421,7 +447,18 @@ function setHover(id){
 }
 function cls(r,id){return "country lvl"+(r||0)+(r?" hasdata":"")+(id===selected?" sel":"")+(id===hovered?" hl":"")}
 
+let infoOpen=false;
+document.getElementById("infoq").onclick=()=>{infoOpen=!infoOpen;render()};
+function renderInfo(){
+  const L=LENSES.find(l=>l.id===lens), box=document.getElementById("info"), btn=document.getElementById("infoq");
+  btn.setAttribute("aria-expanded",infoOpen);
+  document.getElementById("infoqt").textContent=infoOpen?`Hide: what does "${L.name}" mean?`:`What does "${L.name}" mean?`;
+  box.hidden=!infoOpen;
+  if(!infoOpen) return;
+  box.innerHTML=`<dl><dt>What we mean</dt><dd>${L.means}</dd><dt>Data that helps</dt><dd>${L.data}</dd><dt>Example question</dt><dd>${L.example}</dd><dt>Where it is thin</dt><dd>${L.gap}</dd><dt>In this map</dt><dd class="now">${inLens(lens).length} services in ${countryCount(lens)} countries (coloured by how we get the data).</dd></dl>`;
+}
 function render(){
+  renderInfo();
   document.querySelectorAll(".lens").forEach(b=>b.setAttribute("aria-pressed",b.dataset.id===lens));
   const cm=countryMap();
   g.selectAll("circle.country").attr("class",d=>cls(cm[d.id],d.id));
